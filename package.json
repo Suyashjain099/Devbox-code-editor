@@ -1,0 +1,12 @@
+{
+  "name": "parth-code-editor-workspace",
+  "version": "1.0.0",
+  "description": "Root workspace to start all servers with one command",
+  "scripts": {
+    "start": "concurrently \"docker-compose up --build\" \"cd Website-frontend && npm start\" \"cd frontend && npm run dev\"",
+    "install:all": "npm install && cd Website-frontend && npm install && cd ../frontend && npm install"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

@@ -1,50 +1,74 @@
 export const getFileMode = ({ selectedFile }) => {
-  const extension = selectedFile.split('.').pop();
+  if (!selectedFile) return "plaintext";
+  const extension = selectedFile.split('.').pop().toLowerCase();
 
-  switch (extension) {
-    case "js":
-      return "javascript";
-    case "jsx":
-      return "javascript";
-    case "ts":
-      return "typescript";
-    case "tsx":
-      return "typescript";
-    case "py":
-      return "python";
-    case "rs":
-      return "rust"
-    case "java":
-      return "java";
-    case "xml":
-      return "xml";
-    case "rb":
-      return "ruby";
-    case "sass":
-      return "sass";
-    case "md":
-      return "markdown";
-    case "sql":
-      return "mysql";
-    case "json":
-      return "json";
-    case "html":
-      return "html";
-    case "hbs":
-      return "handlebars";
-    case "handlebars":
-      return "handlebars";
-    case "go":
-      return "go";
-    case "cs":
-      return "csharp";
-    case "litcoffee":
-      return "coffee";
-    case "css":
-      return "css";
-    case "cpp":
-      return "cpp"
-    default:
-      return "plaintext";
-  }
+  const modeMap = {
+    // JavaScript / TypeScript
+    js: "javascript",
+    jsx: "javascript",
+    mjs: "javascript",
+    ts: "typescript",
+    tsx: "typescript",
+
+    // Systems Languages
+    c: "c",
+    cpp: "cpp",
+    cxx: "cpp",
+    h: "c",
+    hpp: "cpp",
+    rs: "rust",
+    go: "go",
+
+    // JVM
+    java: "java",
+    kt: "kotlin",
+
+    // Scripting
+    py: "python",
+    rb: "ruby",
+    php: "php",
+    sh: "shell",
+    bash: "shell",
+
+    // Web
+    html: "html",
+    htm: "html",
+    css: "css",
+    scss: "scss",
+    sass: "sass",
+    less: "less",
+
+    // Data / Config
+    json: "json",
+    xml: "xml",
+    yaml: "yaml",
+    yml: "yaml",
+    toml: "ini",
+    ini: "ini",
+    env: "ini",
+
+    // Docs
+    md: "markdown",
+    txt: "plaintext",
+
+    // Database
+    sql: "sql",
+
+    // Templates
+    hbs: "handlebars",
+    handlebars: "handlebars",
+
+    // Docker
+    dockerfile: "dockerfile",
+
+    // Other
+    cs: "csharp",
+    swift: "swift",
+    r: "r",
+    lua: "lua",
+    dart: "dart",
+    graphql: "graphql",
+  };
+
+  return modeMap[extension] || "plaintext";
 };

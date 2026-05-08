@@ -6,10 +6,12 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     make \
     g++ \
+    gcc \
     git \
     golang-go \
     rustc \
     cargo \
+    default-jdk \
     && rm -rf /var/lib/apt/lists/*
 
 RUN ln -sf /usr/bin/python3 /usr/bin/python
@@ -23,7 +25,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm ci
+RUN npm install
 
 # Rebuild node-pty
 RUN npm rebuild node-pty --update-binary

@@ -2,12 +2,12 @@ import socket from "../socket";
 const createNewFile = () =>{
     const fileName = prompt("Enter the file name")
     if (!fileName) return;
-    socket.emit("terminal:write",`touch ${fileName}\n`)
+    socket.emit("file:create",{ path: fileName })
 }
 const createNewFolder = () =>{
     const folderName = prompt("Enter the Folder name")
     if (!folderName) return;
-    socket.emit("terminal:write",`mkdir ${folderName}\n`)
+    socket.emit("folder:create",{ path: folderName })
 }
 
 

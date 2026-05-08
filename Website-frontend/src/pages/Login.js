@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
-import './Login.css'; // Assuming the CSS file is still used
-import { useNavigate } from 'react-router';
-import axios from 'axios';
+import './Auth.css';
+import { useNavigate, Link } from 'react-router-dom';
 
 const Login = () => {
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  
+  const navigate = useNavigate();
 
   const handleChange = (e) => {
     const { id, value } = e.target;
@@ -17,78 +20,86 @@ const Login = () => {
     });
   };
 
-    const navigate=useNavigate()
-    
-  
-    const handleSubmit = (e) => {
-      e.preventDefault(); // Prevent the form from submitting the default way
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    const { password, email } = formData;
 
-      // const email = document.getElementById('login-email').value;
-      // const password = document.getElementById('login-password').value;
-      const { password, email } = formData
-  
-      fetch('/login', {
-          method: 'POST',
-          headers: {
-              'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ email, password })
-      })
-      
-      .then(response => {
-          if (!response.ok) {
-              throw new Error('Network response was not ok');
-          }
-          return response.json();
-      })
-      .then(data => {
-          if (data.token) {
-              // Save the token (if needed)
-              localStorage.setItem('token', data.token);
-              // Redirect to the desired URL
-              window.location.href = data.redirect;
-          } else {
-              // Handle login errors
-              alert(data.msg); // Display the error message to the user
-          }
-      })
-      .catch(error => {
-          console.error('Error:', error);
-          alert('An error occurred. Please try again.'); // Fallback error message
-      });
-    };
-    
+    fetch('/login', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password })
+    })
+    .then(async response => {
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.msg || 'Login failed');
+        }
+        return data;
+    })
+    .then(data => {
+        if (data.token) {
+            // Save token first, THEN navigate
+            localStorage.setItem('token', data.token);
+            // Small timeout ensures localStorage write completes before React re-renders Dashboard
+            setTimeout(() => {
+                navigate('/dashboard');
+            }, 50);
+        }
+    })
+    .catch(err => {
+        console.error('Error:', err);
+        setError(err.message || 'An error occurred. Please try again.');
+        setLoading(false);
+    });
+  };
 
   return (
-    <div className="login-container">
-      <div className="login-box">
-        <h2>Login</h2>
-        <form id="login-form" onSubmit={handleSubmit}>
-          <div className="input-box">
+    <div className="auth-body">
+      <div className="auth-card">
+        <h2 className="auth-title">Welcome back</h2>
+        <p className="auth-subtitle">Enter your credentials to access your workspace</p>
+        
+        {error && <div className="auth-error">{error}</div>}
+
+        <form onSubmit={handleSubmit} className="auth-form">
+          <div className="form-group">
+            <label htmlFor="email">Email</label>
             <input
               type="email"
               id="email"
-              name="email"
+              className="auth-input"
+              placeholder="name@example.com"
               value={formData.email}
               onChange={handleChange}
               required
             />
-            <label htmlFor="email">Email Address</label>
           </div>
-          <div className="input-box">
+          
+          <div className="form-group">
+            <label htmlFor="password">Password</label>
             <input
               type="password"
               id="password"
-              name="password"
+              className="auth-input"
+              placeholder="••••••••"
               value={formData.password}
               onChange={handleChange}
               required
             />
-            <label htmlFor="password">Password</label>
           </div>
-          <button type="submit" className="login-btn">Login</button>
+          
+          <button type="submit" className="btn-primary auth-btn" disabled={loading}>
+            {loading ? 'Signing in...' : 'Sign In'}
+          </button>
         </form>
-        <p>Don't have an account? <a href="/signup">Sign up here</a></p>
+        
+        <div className="auth-footer">
+          Don't have an account? <Link to="/signup" className="auth-link">Sign up</Link>
+        </div>
       </div>
     </div>
   );

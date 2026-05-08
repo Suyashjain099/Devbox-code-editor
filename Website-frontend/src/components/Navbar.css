@@ -1,45 +1,120 @@
+/* Ultra-modern Navbar */
+.navbar-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 1000;
+    display: flex;
+    justify-content: center;
+    padding: 1.5rem;
+    pointer-events: none;
+}
 
 .navbar {
+    pointer-events: auto;
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background-color: #1a2236;
-    padding: 10px 10px;
-    height: 30px;
-
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-color);
+    padding: 0.75rem 1.5rem;
+    border-radius: 9999px; /* Pill shape */
+    width: 100%;
+    max-width: 1200px;
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
+    transition: all 0.3s ease;
 }
 
-.navbar a {
-    text-decoration: none; /* Remove underline */
-    color: white; /* Change link color */
+/* Logo Setup */
+.logo-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    text-decoration: none;
+    color: var(--text-main);
 }
 
+.logo-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    box-shadow: 0 0 15px var(--accent-glow);
+}
 
 .name {
-    font-size: 35px;
-    color: #1ec3ff; /* Light blue color for the logo */
-    font-family: sans-serif;
-    margin-left: 25px;
-
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+    margin: 0;
 }
 
-.btn {
-    background-color: transparent;
-    border: 1px solid white;
-    color: white;
-    padding: 8px 12px;
-    cursor: pointer;
-    margin-left: 15px;
-    border-radius: 5px;
-    overflow: hidden;
-}
-
-.button {
+/* Links */
+.nav-links {
     display: flex;
-    
+    gap: 2rem;
+    align-items: center;
 }
 
-.build{
-    background-color: white;
-    color: black;
+.nav-link {
+    text-decoration: none;
+    color: var(--text-muted);
+    font-size: 0.95rem;
+    font-weight: 500;
+    transition: color 0.2s ease;
+}
+
+.nav-link:hover {
+    color: var(--text-main);
+}
+
+/* Actions */
+.nav-actions {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.btn-no-bg {
+    text-decoration: none;
+    color: var(--text-main);
+    font-weight: 500;
+    font-size: 0.95rem;
+    padding: 0.5rem 1rem;
+    transition: color 0.2s ease;
+}
+
+.btn-no-bg:hover {
+    color: var(--text-muted);
+}
+
+.btn-primary {
+    text-decoration: none;
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.95rem;
+    padding: 0.6rem 1.25rem;
+    border-radius: 9999px;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px var(--accent-glow);
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+}
+
+@media (max-width: 768px) {
+    .nav-links {
+        display: none;
+    }
 }

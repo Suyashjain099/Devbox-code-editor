@@ -1,10 +1,18 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-const cors = require("cors")
+const cors = require("cors");
 const jwt = require('jsonwebtoken');
 const bodyParser = require('body-parser');
-const path = require('path');  // Required to serve HTML files
+const path = require('path');
+const dns = require('dns');
+const Project = require('./model/Project');
+const File = require('./model/File');
+
+const JWT_SECRET = 'secretKey';
+
+// Force Node.js to use Google DNS, bypassing mobile hotspot DNS blocking
+dns.setServers(['8.8.8.8', '8.8.4.4']);
 
 const app = express();
 
@@ -15,7 +23,7 @@ app.use(express.static('public'));  // Serve static files from 'public' folder
 app.use(cors())
 
 // MongoDB connection
-mongoose.connect('mongodb+srv://suyashjain:admin@cluster0.yc6fe.mongodb.net/', {
+mongoose.connect('mongodb+srv://new-user:1234@cluster0.h7v0tbt.mongodb.net/', {
     useNewUrlParser: true,
     useUnifiedTopology: true
 }).then(() => console.log('MongoDB connected'))
@@ -70,12 +78,11 @@ app.post('/signup', async (req, res) => {
         const newUser = new User({ email, password: hashedPassword });
         await newUser.save();
 
-        // Redirect to login page after successful signup
-        //res.status(201).json({ msg: 'User registered successfully. Redirecting to login...', redirect: '/login' });
-        res.redirect('http://localhost:3000/login');  
+        // Return success JSON
+        res.status(201).json({ msg: 'User registered successfully.' });
     } catch (error) {
-        console.log(error);
-        res.status(500).json({ msg: 'Server error' });
+        console.error('Signup error:', error);
+        res.status(500).json({ msg: 'Database error while creating user' });
     }
 });
 
@@ -83,21 +90,158 @@ app.post('/signup', async (req, res) => {
 // Login route
 app.post('/login', async (req, res) => {
     const { email, password } = req.body;
-    console.log(email, password)
     
-    const user = await User.findOne({ email });
-    if (!user) {
-        return res.status(400).json({ msg: 'User not found. Please sign up first.' });
+    try {
+        const user = await User.findOne({ email });
+        if (!user) {
+            return res.status(400).json({ msg: 'User not found. Please sign up first.' });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) {
+            return res.status(400).json({ msg: 'Invalid password' });
+        }
+
+        const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '7d' });
+        res.json({ token, msg: 'Login successful' });
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ msg: 'Database error during login' });
     }
+});
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-        return res.status(400).json({ msg: 'Invalid credentials' });
+// ── Auth Middleware ─────────────────────────
+const authMiddleware = (req, res, next) => {
+    const header = req.headers['authorization'];
+    if (!header) return res.status(401).json({ msg: 'No token provided' });
+    const token = header.split(' ')[1];
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.userId = decoded.id;
+        next();
+    } catch (err) {
+        return res.status(401).json({ msg: 'Invalid or expired token' });
     }
+};
 
-    const token = jwt.sign({ id: user._id }, 'secretKey', { expiresIn: '1h' });
+// ── Project Routes ──────────────────────────
 
-    res.json({ token, msg: 'Login successful, redirecting...', redirect: 'http://localhost:9000' });
+// GET /projects — list all projects for the logged-in user
+app.get('/projects', authMiddleware, async (req, res) => {
+    try {
+        const projects = await Project.find({ userId: req.userId }).sort({ createdAt: -1 });
+        res.json({ projects });
+    } catch (err) {
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// POST /projects — create a new project for the logged-in user
+app.post('/projects', authMiddleware, async (req, res) => {
+    const { name } = req.body;
+    if (!name || name.trim() === '') {
+        return res.status(400).json({ msg: 'Project name is required' });
+    }
+    try {
+        const project = new Project({ userId: req.userId, name: name.trim() });
+        await project.save();
+        // Also create the directory in coding-server via REST
+        try {
+            await fetch(`http://coding-server:9000/folder`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: name.trim(), userId: req.userId })
+            });
+        } catch (fsErr) {
+            console.warn('Could not create folder in coding-server:', fsErr.message);
+        }
+        res.status(201).json({ project });
+    } catch (err) {
+        if (err.code === 11000) {
+            return res.status(400).json({ msg: 'A project with that name already exists' });
+        }
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// DELETE /projects/:name — delete a project
+app.delete('/projects/:name', authMiddleware, async (req, res) => {
+    try {
+        await Project.deleteOne({ userId: req.userId, name: req.params.name });
+        await File.deleteMany({ userId: req.userId, projectName: req.params.name });
+        res.json({ msg: 'Project deleted' });
+    } catch (err) {
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// ── File Sync Routes (Internal use between servers) ────────
+
+// Upsert a file or folder
+app.post('/files/sync', async (req, res) => {
+    const { userId, projectName, path, content, isDirectory } = req.body;
+    try {
+        await File.findOneAndUpdate(
+            { userId, projectName, path },
+            { content: content || '', isDirectory: !!isDirectory, updatedAt: Date.now() },
+            { upsert: true, new: true }
+        );
+        res.status(200).json({ msg: 'File synced' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// Delete a file or folder
+app.delete('/files/sync', async (req, res) => {
+    const { userId, projectName, path } = req.body;
+    try {
+        // Delete the exact file/folder
+        await File.deleteOne({ userId, projectName, path });
+        // Also delete any nested files if it was a directory
+        await File.deleteMany({ userId, projectName, path: new RegExp(`^${path}/`) });
+        res.status(200).json({ msg: 'File deleted' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// Rename a file or folder
+app.post('/files/rename', async (req, res) => {
+    const { userId, projectName, oldPath, newPath } = req.body;
+    try {
+        const file = await File.findOne({ userId, projectName, path: oldPath });
+        if (file) {
+            file.path = newPath;
+            await file.save();
+        }
+        
+        // Find and rename all nested files
+        const nestedFiles = await File.find({ userId, projectName, path: new RegExp(`^${oldPath}/`) });
+        for (const nested of nestedFiles) {
+            nested.path = nested.path.replace(new RegExp(`^${oldPath}`), newPath);
+            await nested.save();
+        }
+        
+        res.status(200).json({ msg: 'File renamed' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// Get all files for a project
+app.get('/files/project', async (req, res) => {
+    const { userId, projectName } = req.query;
+    try {
+        const files = await File.find({ userId, projectName });
+        res.status(200).json({ files });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ msg: 'Server error' });
+    }
 });
 
 
