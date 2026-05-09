@@ -74,6 +74,11 @@ const FileTreeNode = ({ fileName, nodes, onSelect, path, selectedFile, depth = 0
   const [renameValue, setRenameValue] = useState(fileName);
   const renameInputRef = useRef(null);
 
+  const urlParams = new URLSearchParams(window.location.search);
+  const project = urlParams.get("project") || "";
+  const ownerId = urlParams.get("ownerId") || "";
+  const collaboratorId = urlParams.get("collaboratorId") || "";
+
   const isSelected = !isDir && path === selectedFile;
 
   useEffect(() => {
@@ -101,7 +106,7 @@ const FileTreeNode = ({ fileName, nodes, onSelect, path, selectedFile, depth = 0
   const handleDelete = () => {
     const type = isDir ? 'folder' : 'file';
     if (window.confirm(`Delete ${type} "${fileName}"?`)) {
-      socket.emit('file:delete', { path });
+      socket.emit('file:delete', { path, project, ownerId, collaboratorId });
     }
   };
 
@@ -114,7 +119,7 @@ const FileTreeNode = ({ fileName, nodes, onSelect, path, selectedFile, depth = 0
     if (renameValue && renameValue !== fileName) {
       const parentPath = path.substring(0, path.lastIndexOf('/'));
       const newPath = parentPath ? `${parentPath}/${renameValue}` : renameValue;
-      socket.emit('file:rename', { oldPath: path, newPath });
+      socket.emit('file:rename', { oldPath: path, newPath, project, ownerId, collaboratorId });
     }
     setIsRenaming(false);
   };
@@ -123,7 +128,7 @@ const FileTreeNode = ({ fileName, nodes, onSelect, path, selectedFile, depth = 0
     const name = prompt("Enter file name:");
     if (!name) return;
     const newPath = path ? `${path}/${name}` : name;
-    socket.emit('file:create', { path: newPath });
+    socket.emit('file:create', { path: newPath, project, ownerId, collaboratorId });
     setIsOpen(true);
   };
 
@@ -131,7 +136,7 @@ const FileTreeNode = ({ fileName, nodes, onSelect, path, selectedFile, depth = 0
     const name = prompt("Enter folder name:");
     if (!name) return;
     const newPath = path ? `${path}/${name}` : name;
-    socket.emit('folder:create', { path: newPath });
+    socket.emit('folder:create', { path: newPath, project, ownerId, collaboratorId });
     setIsOpen(true);
   };
 

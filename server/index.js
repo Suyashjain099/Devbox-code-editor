@@ -8,6 +8,7 @@ const path = require('path');
 const dns = require('dns');
 const Project = require('./model/Project');
 const File = require('./model/File');
+const Invitation = require('./model/Invitation');
 
 const JWT_SECRET = 'secretKey';
 
@@ -129,8 +130,12 @@ const authMiddleware = (req, res, next) => {
 // GET /projects — list all projects for the logged-in user
 app.get('/projects', authMiddleware, async (req, res) => {
     try {
-        const projects = await Project.find({ userId: req.userId }).sort({ createdAt: -1 });
-        res.json({ projects });
+        const myProjects = await Project.find({ userId: req.userId }).sort({ createdAt: -1 });
+        const sharedProjects = await Project.find({ collaborators: req.userId })
+            .populate('userId', 'email')
+            .sort({ createdAt: -1 });
+            
+        res.json({ projects: myProjects, sharedProjects });
     } catch (err) {
         res.status(500).json({ msg: 'Server error' });
     }
@@ -171,6 +176,91 @@ app.delete('/projects/:name', authMiddleware, async (req, res) => {
         await File.deleteMany({ userId: req.userId, projectName: req.params.name });
         res.json({ msg: 'Project deleted' });
     } catch (err) {
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// ── Invitation Routes ────────────────────────
+
+// Send an invite
+app.post('/invites/send', authMiddleware, async (req, res) => {
+    const { projectId, email } = req.body;
+    try {
+        const receiver = await User.findOne({ email });
+        if (!receiver) return res.status(404).json({ msg: 'User not found' });
+        
+        if (receiver._id.toString() === req.userId) {
+            return res.status(400).json({ msg: 'You cannot invite yourself' });
+        }
+
+        const project = await Project.findOne({ _id: projectId, userId: req.userId });
+        if (!project) return res.status(404).json({ msg: 'Project not found or unauthorized' });
+
+        if (project.collaborators.includes(receiver._id)) {
+            return res.status(400).json({ msg: 'User is already a collaborator' });
+        }
+
+        const existingInvite = await Invitation.findOne({ projectId, receiverId: receiver._id, status: 'pending' });
+        if (existingInvite) return res.status(400).json({ msg: 'Invitation already sent' });
+
+        const invite = new Invitation({
+            projectId,
+            senderId: req.userId,
+            receiverId: receiver._id
+        });
+        await invite.save();
+        res.status(201).json({ msg: 'Invitation sent' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// Get pending invites for me
+app.get('/invites', authMiddleware, async (req, res) => {
+    try {
+        const invites = await Invitation.find({ receiverId: req.userId, status: 'pending' })
+            .populate('senderId', 'email')
+            .populate('projectId', 'name');
+        res.json({ invites });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// Accept an invite
+app.post('/invites/accept/:inviteId', authMiddleware, async (req, res) => {
+    try {
+        const invite = await Invitation.findOne({ _id: req.params.inviteId, receiverId: req.userId, status: 'pending' });
+        if (!invite) return res.status(404).json({ msg: 'Invite not found or already processed' });
+
+        invite.status = 'accepted';
+        await invite.save();
+
+        await Project.findByIdAndUpdate(invite.projectId, {
+            $addToSet: { collaborators: req.userId }
+        });
+
+        res.json({ msg: 'Invitation accepted' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// Reject an invite
+app.post('/invites/reject/:inviteId', authMiddleware, async (req, res) => {
+    try {
+        const invite = await Invitation.findOne({ _id: req.params.inviteId, receiverId: req.userId, status: 'pending' });
+        if (!invite) return res.status(404).json({ msg: 'Invite not found or already processed' });
+
+        invite.status = 'rejected';
+        await invite.save();
+
+        res.json({ msg: 'Invitation rejected' });
+    } catch (err) {
+        console.error(err);
         res.status(500).json({ msg: 'Server error' });
     }
 });
@@ -228,6 +318,53 @@ app.post('/files/rename', async (req, res) => {
         res.status(200).json({ msg: 'File renamed' });
     } catch (err) {
         console.error(err);
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// Push collaborator branch to owner (main)
+app.post('/files/push', async (req, res) => {
+    const { ownerId, collaboratorId, projectName } = req.body;
+    if (!ownerId || !collaboratorId || !projectName) {
+      return res.status(400).json({ error: 'Missing parameters' });
+    }
+    try {
+        const collabFiles = await File.find({ userId: collaboratorId, projectName });
+        for (const file of collabFiles) {
+            await File.findOneAndUpdate(
+                { userId: ownerId, projectName, path: file.path },
+                { content: file.content, isDirectory: file.isDirectory, updatedAt: Date.now() },
+                { upsert: true }
+            );
+        }
+        res.status(200).json({ msg: 'Pushed to global successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// Pull global to collaborator branch
+app.post('/files/pull', async (req, res) => {
+    const { ownerId, collaboratorId, projectName } = req.body;
+    if (!ownerId || !collaboratorId || !projectName) {
+      return res.status(400).json({ error: 'Missing parameters' });
+    }
+    try {
+        const ownerFiles = await File.find({ userId: ownerId, projectName });
+        for (const file of ownerFiles) {
+            await File.findOneAndUpdate(
+                { userId: collaboratorId, projectName, path: file.path },
+                { content: file.content, isDirectory: file.isDirectory, updatedAt: Date.now() },
+                { upsert: true }
+            );
+        }
+        res.status(200).json({ msg: 'Pulled from global successfully' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
         res.status(500).json({ msg: 'Server error' });
     }
 });

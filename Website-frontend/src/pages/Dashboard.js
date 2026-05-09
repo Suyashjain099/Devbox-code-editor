@@ -16,6 +16,8 @@ const AUTH_URL = 'http://localhost:5000';
 
 const Dashboard = () => {
   const [projects, setProjects] = useState([]);
+  const [sharedProjects, setSharedProjects] = useState([]);
+  const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
@@ -25,7 +27,22 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchProjects();
+    fetchInvites();
   }, []);
+
+  const fetchInvites = async () => {
+    try {
+      const res = await fetch(`${AUTH_URL}/invites`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setInvites(data.invites || []);
+      }
+    } catch (err) {
+      console.error('Error fetching invites:', err);
+    }
+  };
 
   const fetchProjects = async () => {
     try {
@@ -42,6 +59,7 @@ const Dashboard = () => {
       if (!res.ok) throw new Error('Failed to fetch projects');
       const data = await res.json();
       setProjects(data.projects || []);
+      setSharedProjects(data.sharedProjects || []);
     } catch (err) {
       console.error('Error fetching projects:', err);
       setError(err.message);
@@ -98,9 +116,46 @@ const Dashboard = () => {
     }
   };
 
-  const openProject = (projectName) => {
-    // Pass both project name and userId so the IDE scopes files to this user
-    window.location.href = `http://localhost:5173/?project=${encodeURIComponent(projectName)}&userId=${userId}`;
+  const handleSendInvite = async (e, projectId) => {
+    e.stopPropagation();
+    const email = prompt('Enter the email of the person you want to invite:');
+    if (!email || email.trim() === '') return;
+    
+    try {
+      const res = await fetch(`${AUTH_URL}/invites/send`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ projectId, email: email.trim() })
+      });
+      const data = await res.json();
+      alert(data.msg);
+    } catch (err) {
+      console.error(err);
+      alert('Error sending invite');
+    }
+  };
+
+  const handleInviteAction = async (inviteId, action) => {
+    try {
+      const res = await fetch(`${AUTH_URL}/invites/${action}/${inviteId}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      alert(data.msg);
+      fetchInvites();
+      if (action === 'accept') fetchProjects();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const openProject = (projectName, ownerId) => {
+    // Pass ownerId to locate the project, and collaboratorId (current user) to determine branch
+    window.location.href = `http://localhost:5173/?project=${encodeURIComponent(projectName)}&ownerId=${ownerId}&collaboratorId=${userId}`;
   };
 
   const handleLogout = () => {
@@ -191,78 +246,172 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Projects Grid */}
-        {!loading && !error && (
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-            gap: '20px'
-          }}>
-            {projects.length === 0 ? (
-              <div style={{
-                gridColumn: '1 / -1', textAlign: 'center', padding: '80px 20px',
-                background: '#111111', border: '1px dashed #27272a', borderRadius: '12px'
-              }}>
-                <div style={{ fontSize: '3rem', marginBottom: '16px' }}>📁</div>
-                <h3 style={{ marginBottom: '8px', fontSize: '1.3rem' }}>No projects yet</h3>
-                <p style={{ color: '#a1a1aa' }}>Click "New Project" to create your first workspace.</p>
-              </div>
-            ) : (
-              projects.map(project => (
-                <div
-                  key={project._id}
-                  onClick={() => openProject(project.name)}
-                  style={{
-                    background: '#111111', border: '1px solid #27272a',
-                    borderRadius: '12px', padding: '24px', cursor: 'pointer',
-                    transition: 'all 0.2s ease', position: 'relative'
-                  }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.borderColor = '#52525b';
-                    e.currentTarget.style.background = '#1a1a1a';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.borderColor = '#27272a';
-                    e.currentTarget.style.background = '#111111';
-                  }}
-                >
-                  {/* Delete button */}
-                  <button
-                    onClick={(e) => handleDeleteProject(e, project.name)}
-                    title="Delete project"
-                    style={{
-                      position: 'absolute', top: '12px', right: '12px',
-                      background: 'transparent', border: 'none', color: '#52525b',
-                      cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1,
-                      padding: '4px 6px', borderRadius: '4px'
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
-                    onMouseLeave={e => e.currentTarget.style.color = '#52525b'}
-                  >
-                    ✕
-                  </button>
-
-                  <div style={{
-                    width: '48px', height: '48px', background: 'rgba(255,255,255,0.07)',
-                    borderRadius: '10px', display: 'flex', alignItems: 'center',
-                    justifyContent: 'center', fontSize: '1.4rem', marginBottom: '16px'
-                  }}>
-                    📁
+        {/* Invites / Inbox section */}
+        {invites.length > 0 && (
+          <div style={{ marginBottom: '40px' }}>
+            <h2 style={{ fontSize: '1.5rem', marginBottom: '16px', color: '#fbbf24' }}>📥 Project Invitations</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {invites.map(invite => (
+                <div key={invite._id} style={{
+                  background: '#1a1a1a', border: '1px solid #d97706', borderRadius: '8px',
+                  padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                }}>
+                  <div>
+                    <strong>{invite.senderId?.email}</strong> invited you to collaborate on <strong>{invite.projectId?.name}</strong>
                   </div>
-                  <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '6px', color: '#ededed' }}>
-                    {project.name}
-                  </h3>
-                  <p style={{ fontSize: '0.78rem', color: '#71717a', margin: 0 }}>
-                    Created {formatDate(project.createdAt)}
-                  </p>
-                  <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #27272a' }}>
-                    <span style={{
-                      fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1px',
-                      color: '#71717a', background: 'rgba(255,255,255,0.05)', padding: '3px 8px', borderRadius: '4px'
-                    }}>Workspace</span>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button onClick={() => handleInviteAction(invite._id, 'accept')} style={{ background: '#10b981', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>Accept</button>
+                    <button onClick={() => handleInviteAction(invite._id, 'reject')} style={{ background: '#ef4444', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }}>Reject</button>
                   </div>
                 </div>
-              ))
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Projects Grid */}
+        {!loading && !error && (
+          <div>
+            <h2 style={{ fontSize: '1.5rem', marginBottom: '16px' }}>My Projects</h2>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+              gap: '20px',
+              marginBottom: '40px'
+            }}>
+              {projects.length === 0 ? (
+                <div style={{
+                  gridColumn: '1 / -1', textAlign: 'center', padding: '80px 20px',
+                  background: '#111111', border: '1px dashed #27272a', borderRadius: '12px'
+                }}>
+                  <div style={{ fontSize: '3rem', marginBottom: '16px' }}>📁</div>
+                  <h3 style={{ marginBottom: '8px', fontSize: '1.3rem' }}>No projects yet</h3>
+                  <p style={{ color: '#a1a1aa' }}>Click "New Project" to create your first workspace.</p>
+                </div>
+              ) : (
+                projects.map(project => (
+                  <div
+                    key={project._id}
+                    onClick={() => openProject(project.name, project.userId)}
+                    style={{
+                      background: '#111111', border: '1px solid #27272a',
+                      borderRadius: '12px', padding: '24px', cursor: 'pointer',
+                      transition: 'all 0.2s ease', position: 'relative'
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.borderColor = '#52525b';
+                      e.currentTarget.style.background = '#1a1a1a';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.borderColor = '#27272a';
+                      e.currentTarget.style.background = '#111111';
+                    }}
+                  >
+                    {/* Invite Button */}
+                    <button
+                      onClick={(e) => handleSendInvite(e, project._id)}
+                      title="Invite Collaborator"
+                      style={{
+                        position: 'absolute', top: '12px', right: '40px',
+                        background: 'transparent', border: '1px solid #3f3f46', color: '#a1a1aa',
+                        cursor: 'pointer', fontSize: '0.8rem', padding: '4px 8px', borderRadius: '4px'
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = '#fff'; }}
+                      onMouseLeave={e => { e.currentTarget.style.color = '#a1a1aa'; e.currentTarget.style.borderColor = '#3f3f46'; }}
+                    >
+                      Invite
+                    </button>
+
+                    {/* Delete button */}
+                    <button
+                      onClick={(e) => handleDeleteProject(e, project.name)}
+                      title="Delete project"
+                      style={{
+                        position: 'absolute', top: '12px', right: '12px',
+                        background: 'transparent', border: 'none', color: '#52525b',
+                        cursor: 'pointer', fontSize: '1.1rem', lineHeight: 1,
+                        padding: '4px 6px', borderRadius: '4px'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.color = '#ef4444'}
+                      onMouseLeave={e => e.currentTarget.style.color = '#52525b'}
+                    >
+                      ✕
+                    </button>
+
+                    <div style={{
+                      width: '48px', height: '48px', background: 'rgba(255,255,255,0.07)',
+                      borderRadius: '10px', display: 'flex', alignItems: 'center',
+                      justifyContent: 'center', fontSize: '1.4rem', marginBottom: '16px'
+                    }}>
+                      📁
+                    </div>
+                    <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '6px', color: '#ededed' }}>
+                      {project.name}
+                    </h3>
+                    <p style={{ fontSize: '0.78rem', color: '#71717a', margin: 0 }}>
+                      Created {formatDate(project.createdAt)}
+                    </p>
+                    <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #27272a' }}>
+                      <span style={{
+                        fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1px',
+                        color: '#71717a', background: 'rgba(255,255,255,0.05)', padding: '3px 8px', borderRadius: '4px'
+                      }}>Workspace Owner</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            
+            {/* Shared Projects */}
+            {sharedProjects.length > 0 && (
+              <>
+                <h2 style={{ fontSize: '1.5rem', marginBottom: '16px' }}>Shared with me</h2>
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                  gap: '20px'
+                }}>
+                  {sharedProjects.map(project => (
+                    <div
+                      key={project._id}
+                      onClick={() => openProject(project.name, project.userId._id)}
+                      style={{
+                        background: '#111111', border: '1px solid #27272a',
+                        borderRadius: '12px', padding: '24px', cursor: 'pointer',
+                        transition: 'all 0.2s ease', position: 'relative'
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.borderColor = '#52525b';
+                        e.currentTarget.style.background = '#1a1a1a';
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.borderColor = '#27272a';
+                        e.currentTarget.style.background = '#111111';
+                      }}
+                    >
+                      <div style={{
+                        width: '48px', height: '48px', background: 'rgba(59, 130, 246, 0.1)',
+                        borderRadius: '10px', display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', fontSize: '1.4rem', marginBottom: '16px'
+                      }}>
+                        🤝
+                      </div>
+                      <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '6px', color: '#ededed' }}>
+                        {project.name}
+                      </h3>
+                      <p style={{ fontSize: '0.78rem', color: '#71717a', margin: 0 }}>
+                        Shared by {project.userId?.email || 'Unknown'}
+                      </p>
+                      <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #27272a' }}>
+                        <span style={{
+                          fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '1px',
+                          color: '#60a5fa', background: 'rgba(59, 130, 246, 0.1)', padding: '3px 8px', borderRadius: '4px'
+                        }}>Collaborator</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         )}

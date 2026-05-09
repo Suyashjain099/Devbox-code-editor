@@ -35,7 +35,9 @@ function App() {
 
   const urlParams = new URLSearchParams(window.location.search);
   const project = urlParams.get("project") || "";
-  const userId = urlParams.get("userId") || "";
+  const ownerId = urlParams.get("ownerId") || "";
+  const collaboratorId = urlParams.get("collaboratorId") || "";
+  const isCollaborator = ownerId !== collaboratorId && ownerId !== "";
 
   const isSaved = selectedFileContent === code;
 
@@ -48,7 +50,7 @@ function App() {
   useEffect(() => {
     if (!isSaved && code && selectedFile) {
       const timer = setTimeout(() => {
-        socket.emit("file:change", { path: selectedFile, content: code, project, userId });
+        socket.emit("file:change", { path: selectedFile, content: code, project, ownerId, collaboratorId });
         setSelectedFileContent(code);
       }, 5000);
       return () => clearTimeout(timer);
@@ -67,20 +69,20 @@ function App() {
   // ── Fetch file tree ────────────────────────
   const getFileTree = useCallback(async () => {
     try {
-      const response = await fetch(`http://localhost:9000/files?project=${project}&userId=${userId}`);
+      const response = await fetch(`http://localhost:9000/files?project=${project}&ownerId=${ownerId}&collaboratorId=${collaboratorId}`);
       const result = await response.json();
       setFileTree(result.tree);
     } catch (err) {
       console.error("Failed to fetch file tree:", err);
     }
-  }, []);
+  }, [project, ownerId, collaboratorId]);
 
   // ── Fetch file content ─────────────────────
   const getFileContents = useCallback(async () => {
     if (!selectedFile) return;
     try {
       const response = await fetch(
-        `http://localhost:9000/files/content?path=${encodeURIComponent(selectedFile)}&project=${project}&userId=${userId}`
+        `http://localhost:9000/files/content?path=${encodeURIComponent(selectedFile)}&project=${project}&ownerId=${ownerId}&collaboratorId=${collaboratorId}`
       );
       const result = await response.json();
       setSelectedFileContent(result.content);
@@ -121,10 +123,9 @@ function App() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   });
 
-  // ── Save ───────────────────────────────────
   const handleSave = () => {
     if (selectedFile && code) {
-      socket.emit("file:change", { path: selectedFile, content: code, project, userId });
+      socket.emit("file:change", { path: selectedFile, content: code, project, ownerId, collaboratorId });
       setSelectedFileContent(code);
     }
   };
@@ -134,7 +135,7 @@ function App() {
     if (!selectedFile) return;
     // Save before run
     if (!isSaved) {
-      socket.emit("file:change", { path: selectedFile, content: code, project, userId });
+      socket.emit("file:change", { path: selectedFile, content: code, project, ownerId, collaboratorId });
       setSelectedFileContent(code);
     }
     setIsRunning(true);
@@ -172,7 +173,7 @@ function App() {
     const defaultVal = basePath ? basePath + "/" : "";
     const fullPath = prompt("Enter file path:", defaultVal);
     if (!fullPath) return;
-    socket.emit("file:create", { path: fullPath, project, userId });
+    socket.emit("file:create", { path: fullPath, project, ownerId, collaboratorId });
   };
 
   const handleCreateNewFolder = () => {
@@ -180,7 +181,7 @@ function App() {
     const defaultVal = basePath ? basePath + "/" : "";
     const fullPath = prompt("Enter folder path:", defaultVal);
     if (!fullPath) return;
-    socket.emit("folder:create", { path: fullPath, project, userId });
+    socket.emit("folder:create", { path: fullPath, project, ownerId, collaboratorId });
   };
 
   // ── Resize Handlers ────────────────────────
@@ -334,6 +335,62 @@ function App() {
                 >
                   <FaPlay size={12} fill="currentColor" />
                   <span>{isRunning ? "Running..." : "Run"}</span>
+                </button>
+                {isCollaborator && (
+                  <button
+                    className="toolbar-btn"
+                    style={{ background: '#d97706', color: 'white', marginLeft: '10px' }}
+                    onClick={async () => {
+                      if (!window.confirm("Push your changes to the main workspace? This will overwrite the owner's code with your branch.")) return;
+                      try {
+                        const res = await fetch('http://localhost:9000/push', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ project, ownerId, collaboratorId })
+                        });
+                        const data = await res.json();
+                        alert(data.msg || data.error);
+                      } catch (err) {
+                        alert("Failed to push changes");
+                      }
+                    }}
+                    title="Merge Branch to Main"
+                  >
+                    <span>🚀 Push to Global</span>
+                  </button>
+                )}
+                
+                <button
+                  className="toolbar-btn"
+                  style={{ background: '#2563eb', color: 'white', marginLeft: '10px' }}
+                  onClick={async () => {
+                    if (isCollaborator) {
+                      if (!window.confirm("Pull changes from the main workspace? This will overwrite your branch with the owner's code.")) return;
+                      try {
+                        const res = await fetch('http://localhost:9000/pull', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ project, ownerId, collaboratorId })
+                        });
+                        const data = await res.json();
+                        alert(data.msg || data.error);
+                        // Refresh the current file if it's open
+                        getFileTree();
+                        if (selectedFile) getFileContents();
+                      } catch (err) {
+                        alert("Failed to pull changes");
+                      }
+                    } else {
+                      // For Owner: Just refresh the view since global files are already updated
+                      if (!window.confirm("Reload files to view newest global changes?")) return;
+                      getFileTree();
+                      if (selectedFile) getFileContents();
+                      alert("Refreshed with latest global changes!");
+                    }
+                  }}
+                  title="Fetch Latest Global Changes"
+                >
+                  <span>📥 Pull from Global</span>
                 </button>
               </div>
             </div>

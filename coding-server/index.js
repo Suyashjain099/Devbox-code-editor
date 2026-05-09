@@ -14,6 +14,17 @@ const pty = require('node-pty');
 const PORT = process.env.PORT || 9000;
 const userDir = path.join(__dirname, 'user');
 
+const getBaseDir = (ownerId, collaboratorId, project) => {
+  if (ownerId && project) {
+    if (collaboratorId && collaboratorId !== ownerId) {
+      return path.join(userDir, ownerId, `${project}_branch_${collaboratorId}`);
+    }
+    return path.join(userDir, ownerId, project);
+  }
+  // Fallback
+  return ownerId ? path.join(userDir, ownerId) : project ? path.join(userDir, project) : userDir;
+};
+
 // Ensure user directory exists
 if (!fsSync.existsSync(userDir)) {
   fsSync.mkdirSync(userDir, { recursive: true });
@@ -103,22 +114,22 @@ io.on('connection', (socket) => {
   }, 200);
 
   // ── File Operations ──────────────────────
-  socket.on('file:change', async ({ path: filePath, content, project, userId }) => {
+  socket.on('file:change', async ({ path: filePath, content, project, ownerId, collaboratorId }) => {
     if (!filePath) return;
     try {
-      const baseDir = userId
-        ? path.join(userDir, userId, project || '')
-        : project ? path.join(userDir, project) : userDir;
+      const baseDir = getBaseDir(ownerId, collaboratorId, project);
       const fullPath = path.join(baseDir, filePath);
       await fs.mkdir(path.dirname(fullPath), { recursive: true });
       await fs.writeFile(fullPath, content);
       
       // Sync to MongoDB
-      if (userId && project) {
+      // If collaborator, save to DB under their own ID to isolate state
+      const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
+      if (dbUserId && project) {
         fetch('http://parth-auth-server:5000/files/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, projectName: project, path: filePath, content, isDirectory: false })
+            body: JSON.stringify({ userId: dbUserId, projectName: project, path: filePath, content, isDirectory: false })
         }).catch(err => console.error('Failed to sync to DB:', err));
       }
     } catch (err) {
@@ -127,23 +138,22 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('file:create', async ({ path: filePath, project, userId }) => {
+  socket.on('file:create', async ({ path: filePath, project, ownerId, collaboratorId }) => {
     if (!filePath) return;
     try {
-      const baseDir = userId
-        ? path.join(userDir, userId, project || '')
-        : project ? path.join(userDir, project) : userDir;
+      const baseDir = getBaseDir(ownerId, collaboratorId, project);
       const fullPath = path.join(baseDir, filePath);
       await fs.mkdir(path.dirname(fullPath), { recursive: true });
       await fs.writeFile(fullPath, '');
       io.emit('file:refresh');
       
       // Sync to MongoDB
-      if (userId && project) {
+      const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
+      if (dbUserId && project) {
         fetch('http://parth-auth-server:5000/files/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, projectName: project, path: filePath, content: '', isDirectory: false })
+            body: JSON.stringify({ userId: dbUserId, projectName: project, path: filePath, content: '', isDirectory: false })
         }).catch(err => console.error('Failed to sync to DB:', err));
       }
     } catch (err) {
@@ -152,12 +162,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('file:delete', async ({ path: filePath, project, userId }) => {
+  socket.on('file:delete', async ({ path: filePath, project, ownerId, collaboratorId }) => {
     if (!filePath) return;
     try {
-      const baseDir = userId
-        ? path.join(userDir, userId, project || '')
-        : project ? path.join(userDir, project) : userDir;
+      const baseDir = getBaseDir(ownerId, collaboratorId, project);
       const fullPath = path.join(baseDir, filePath);
       const stat = await fs.stat(fullPath);
       if (stat.isDirectory()) {
@@ -168,11 +176,12 @@ io.on('connection', (socket) => {
       io.emit('file:refresh');
       
       // Sync to MongoDB
-      if (userId && project) {
+      const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
+      if (dbUserId && project) {
         fetch('http://parth-auth-server:5000/files/sync', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, projectName: project, path: filePath })
+            body: JSON.stringify({ userId: dbUserId, projectName: project, path: filePath })
         }).catch(err => console.error('Failed to delete in DB:', err));
       }
     } catch (err) {
@@ -181,12 +190,10 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('file:rename', async ({ oldPath, newPath, project, userId }) => {
+  socket.on('file:rename', async ({ oldPath, newPath, project, ownerId, collaboratorId }) => {
     if (!oldPath || !newPath) return;
     try {
-      const baseDir = userId
-        ? path.join(userDir, userId, project || '')
-        : project ? path.join(userDir, project) : userDir;
+      const baseDir = getBaseDir(ownerId, collaboratorId, project);
       const fullOld = path.join(baseDir, oldPath);
       const fullNew = path.join(baseDir, newPath);
       await fs.mkdir(path.dirname(fullNew), { recursive: true });
@@ -194,11 +201,12 @@ io.on('connection', (socket) => {
       io.emit('file:refresh');
       
       // Sync to MongoDB
-      if (userId && project) {
+      const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
+      if (dbUserId && project) {
         fetch('http://parth-auth-server:5000/files/rename', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, projectName: project, oldPath, newPath })
+            body: JSON.stringify({ userId: dbUserId, projectName: project, oldPath, newPath })
         }).catch(err => console.error('Failed to rename in DB:', err));
       }
     } catch (err) {
@@ -207,21 +215,20 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('folder:create', async ({ path: folderPath, project, userId }) => {
+  socket.on('folder:create', async ({ path: folderPath, project, ownerId, collaboratorId }) => {
     if (!folderPath) return;
     try {
-      const baseDir = userId
-        ? path.join(userDir, userId, project || '')
-        : project ? path.join(userDir, project) : userDir;
+      const baseDir = getBaseDir(ownerId, collaboratorId, project);
       await fs.mkdir(path.join(baseDir, folderPath), { recursive: true });
       io.emit('file:refresh');
       
       // Sync to MongoDB
-      if (userId && project) {
+      const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
+      if (dbUserId && project) {
         fetch('http://parth-auth-server:5000/files/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId, projectName: project, path: folderPath, content: '', isDirectory: true })
+            body: JSON.stringify({ userId: dbUserId, projectName: project, path: folderPath, content: '', isDirectory: true })
         }).catch(err => console.error('Failed to sync folder to DB:', err));
       }
     } catch (err) {
@@ -231,11 +238,12 @@ io.on('connection', (socket) => {
   });
 
   // ── Terminal Operations ──────────────────
-  socket.on('terminal:write', (data, project, userId) => {
+  socket.on('terminal:write', (data, project, ownerId, collaboratorId) => {
     if (ptyProcess) {
       if (data === "cd_project") {
-        if (userId && project) {
-          ptyProcess.write(`cd "/app/user/${userId}/${project}"\n`);
+        if (ownerId && project) {
+          const baseDir = getBaseDir(ownerId, collaboratorId, project);
+          ptyProcess.write(`cd "${baseDir}"\n`);
         } else if (project) {
           ptyProcess.write(`cd "/app/user/${project}"\n`);
         }
@@ -272,24 +280,21 @@ app.get('/health', (req, res) => {
 // Get file tree
 app.get('/files', async (req, res) => {
   try {
-    const project = req.query.project;
-    const userId = req.query.userId;
-    const targetDir = userId && project
-      ? path.join(userDir, userId, project)
-      : userId
-        ? path.join(userDir, userId)
-        : project
-          ? path.join(userDir, project)
-          : userDir;
+    const { project, ownerId, collaboratorId } = req.query;
+    const targetDir = getBaseDir(ownerId, collaboratorId, project);
     
     // Check if directory exists locally
     if (!fsSync.existsSync(targetDir)) {
       fsSync.mkdirSync(targetDir, { recursive: true });
       
-      // Pull files from MongoDB if we have userId and project
-      if (userId && project) {
+      // Pull files from MongoDB.
+      // If we are a collaborator creating our branch for the first time,
+      // we must fetch the OWNER's files to seed our directory.
+      const fetchUserId = (collaboratorId && collaboratorId !== ownerId) ? ownerId : ownerId;
+      
+      if (fetchUserId && project) {
         try {
-          const response = await fetch(`http://parth-auth-server:5000/files/project?userId=${userId}&projectName=${project}`);
+          const response = await fetch(`http://parth-auth-server:5000/files/project?userId=${fetchUserId}&projectName=${project}`);
           if (response.ok) {
             const data = await response.json();
             for (const file of data.files) {
@@ -302,12 +307,13 @@ app.get('/files', async (req, res) => {
               }
             }
           }
-        } catch (dbErr) {
-          console.error('[API /files] Failed to pull from DB:', dbErr.message);
+        } catch (fetchErr) {
+          console.error("Error pulling initial files from MongoDB:", fetchErr.message);
         }
       }
     }
     
+
     const fileTree = await generateFileTree(targetDir);
     return res.json({ tree: fileTree });
   } catch (err) {
@@ -319,25 +325,73 @@ app.get('/files', async (req, res) => {
 // Get file content
 app.get('/files/content', async (req, res) => {
   try {
-    const filePath = req.query.path;
-    const project = req.query.project;
-    const userId = req.query.userId;
+    const { path: filePath, project, ownerId, collaboratorId } = req.query;
     if (!filePath) {
       return res.status(400).json({ error: 'Path is required' });
     }
-    const baseDir = userId && project
-      ? path.join(userDir, userId, project)
-      : userId
-        ? path.join(userDir, userId)
-        : project
-          ? path.join(userDir, project)
-          : userDir;
+    const baseDir = getBaseDir(ownerId, collaboratorId, project);
     const fullPath = path.join(baseDir, filePath);
     const content = await fs.readFile(fullPath, 'utf-8');
     return res.json({ content });
   } catch (err) {
     console.error('[API /files/content] Error:', err.message);
     return res.status(404).json({ error: 'File not found', content: '' });
+  }
+});
+
+// Push changes to global
+app.post('/push', async (req, res) => {
+  try {
+    const { project, ownerId, collaboratorId } = req.body;
+    if (!project || !ownerId || !collaboratorId) {
+      return res.status(400).json({ error: 'Missing parameters' });
+    }
+
+    const collabDir = getBaseDir(ownerId, collaboratorId, project);
+    const ownerDir = getBaseDir(ownerId, ownerId, project);
+
+    // Recursively copy files from collaborator to owner
+    await fs.cp(collabDir, ownerDir, { recursive: true, force: true });
+
+    // Sync to DB
+    fetch('http://parth-auth-server:5000/files/push', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ownerId, collaboratorId, projectName: project })
+    }).catch(err => console.error('Failed to sync push to DB:', err));
+
+    return res.json({ msg: 'Successfully pushed to global workspace!' });
+  } catch (err) {
+    console.error('[API /push] Error:', err.message);
+    return res.status(500).json({ error: 'Failed to push changes' });
+  }
+});
+
+// Pull changes from global
+app.post('/pull', async (req, res) => {
+  try {
+    const { project, ownerId, collaboratorId } = req.body;
+    if (!project || !ownerId || !collaboratorId) {
+      return res.status(400).json({ error: 'Missing parameters' });
+    }
+
+    const collabDir = getBaseDir(ownerId, collaboratorId, project);
+    const ownerDir = getBaseDir(ownerId, ownerId, project);
+
+    // Recursively copy files from owner to collaborator
+    await fs.cp(ownerDir, collabDir, { recursive: true, force: true });
+
+    // Sync to DB
+    fetch('http://parth-auth-server:5000/files/pull', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ownerId, collaboratorId, projectName: project })
+    }).catch(err => console.error('Failed to sync pull to DB:', err));
+
+    return res.json({ msg: 'Successfully pulled from global workspace!' });
+  } catch (err) {
+    console.error('[API /pull] Error:', err.message);
+    return res.status(500).json({ error: 'Failed to pull changes' });
   }
 });
 

@@ -5,7 +5,8 @@ import socket from "../socket";
 
 const urlParams = new URLSearchParams(window.location.search);
 const project = urlParams.get("project") || "";
-const userId = urlParams.get("userId") || "";
+const ownerId = urlParams.get("ownerId") || "";
+const collaboratorId = urlParams.get("collaboratorId") || "";
 
 import "@xterm/xterm/css/xterm.css";
 
@@ -68,7 +69,7 @@ const Terminal = () => {
 
     // User types → send to backend PTY
     const onData = (data) => {
-      socket.emit("terminal:write", data, project, userId);
+      socket.emit("terminal:write", data, project, ownerId, collaboratorId);
     };
     const disposable = term.onData(onData);
 
@@ -81,13 +82,13 @@ const Terminal = () => {
 
     // When socket reconnects, the server will send a fresh prompt
     const onConnect = () => {
-      socket.emit("terminal:write", "cd_project", project, userId);
+      socket.emit("terminal:write", "cd_project", project, ownerId, collaboratorId);
     };
     socket.on("connect", onConnect);
     
     // Also emit immediately in case it's already connected
     if (socket.connected) {
-      socket.emit("terminal:write", "cd_project", project, userId);
+      socket.emit("terminal:write", "cd_project", project, ownerId, collaboratorId);
     }
 
     // ResizeObserver for auto-fit when container resizes
