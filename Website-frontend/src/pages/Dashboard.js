@@ -154,8 +154,8 @@ const Dashboard = () => {
   };
 
   const openProject = (projectName, ownerId) => {
-    // Pass ownerId to locate the project, and collaboratorId (current user) to determine branch
-    window.location.href = `http://localhost:5173/?project=${encodeURIComponent(projectName)}&ownerId=${ownerId}&collaboratorId=${userId}`;
+    // Pass token in URL since IDE (port 5173) is a different origin than Dashboard (port 3000)
+    window.location.href = `http://localhost:5173/?project=${encodeURIComponent(projectName)}&ownerId=${ownerId}&collaboratorId=${userId}&token=${token}`;
   };
 
   const handleLogout = () => {

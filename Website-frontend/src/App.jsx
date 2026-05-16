@@ -5,6 +5,9 @@ import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import Navbar from './components/Navbar';
 import PrivateRoute from './components/PrivateRoute';
+import Features from './pages/Features';
+import Learn from './pages/Learn';
+import Community from './pages/Community';
 
 const App = () => {
     return (
@@ -16,6 +19,9 @@ const App = () => {
                 <Route path="/" element={<Home/>} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
+                <Route path="/features" element={<Features />} />
+                <Route path="/learn" element={<Learn />} />
+                <Route path="/community" element={<Community />} />
                 <Route path="/dashboard" element={
                   <PrivateRoute>
                     <Dashboard />

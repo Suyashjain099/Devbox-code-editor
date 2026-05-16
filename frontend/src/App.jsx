@@ -11,12 +11,25 @@ import { Editor } from "@monaco-editor/react";
 import { getFileMode } from "./utils/getFileMode";
 
 function App() {
-  // ── Auth Guard ─────────────────────────────
-  // If no token, send user to the login page immediately
-  const token = localStorage.getItem('token');
-  if (!token) {
+  // ── URL Params + Auth Guard (single parse) ──
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlToken   = urlParams.get('token');
+  const project    = urlParams.get('project') || '';
+  const ownerId    = urlParams.get('ownerId') || '';
+  const collaboratorId = urlParams.get('collaboratorId') || '';
+
+  // Persist token cross-origin (Edge tracking-prevention safe)
+  if (urlToken) {
+    try { sessionStorage.setItem('devbox_token', urlToken); } catch(e) {}
+    try { localStorage.setItem('token', urlToken); } catch(e) {}
+  }
+  const authToken = urlToken
+    || (() => { try { return sessionStorage.getItem('devbox_token'); } catch(e) { return null; } })()
+    || (() => { try { return localStorage.getItem('token'); } catch(e) { return null; } })();
+
+  if (!authToken) {
     window.location.replace('http://localhost:3000/login');
-    return null; // render nothing while redirecting
+    return null;
   }
 
   // ── State ──────────────────────────────────
@@ -30,14 +43,14 @@ function App() {
   const [theme, setTheme] = useState("dark");
   const [isRunning, setIsRunning] = useState(false);
   const [cursorPosition, setCursorPosition] = useState({ line: 1, col: 1 });
+  const [aiStatus, setAiStatus] = useState('idle'); // 'idle' | 'thinking' | 'done'
 
   const editorRef = useRef(null);
+  const aiDebounceRef = useRef(null);
+  const monacoRef = useRef(null);
 
-  const urlParams = new URLSearchParams(window.location.search);
-  const project = urlParams.get("project") || "";
-  const ownerId = urlParams.get("ownerId") || "";
-  const collaboratorId = urlParams.get("collaboratorId") || "";
   const isCollaborator = ownerId !== collaboratorId && ownerId !== "";
+
 
   const isSaved = selectedFileContent === code;
 
@@ -103,25 +116,13 @@ function App() {
   // ── Keyboard Shortcuts ─────────────────────
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Ctrl+S → Save
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-        e.preventDefault();
-        handleSave();
-      }
-      // Ctrl+Enter → Run
-      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-        e.preventDefault();
-        handleRunClick();
-      }
-      // Ctrl+W → Close tab
-      if ((e.ctrlKey || e.metaKey) && e.key === "w") {
-        e.preventDefault();
-        if (selectedFile) closeTab(selectedFile);
-      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); handleSave(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); handleRunClick(); }
+      if ((e.ctrlKey || e.metaKey) && e.key === "w") { e.preventDefault(); if (selectedFile) closeTab(selectedFile); }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  });
+  }, [selectedFile, isSaved, code]); // proper deps — don't re-register on every render
 
   const handleSave = () => {
     if (selectedFile && code) {
@@ -222,12 +223,160 @@ function App() {
     document.body.style.userSelect = "none";
   }, [handleFilesMouseMove, handleFilesMouseUp]);
 
-  // ── Editor mount handler ───────────────────
-  const handleEditorMount = (editor) => {
+  // ── Editor mount handler + AI Ghost Text ──────
+  const aiSuggestionRef = useRef('');
+  const aiDecorationRef = useRef(null);
+
+  const handleEditorMount = (editor, monaco) => {
     editorRef.current = editor;
+    monacoRef.current = monaco;
+
     editor.onDidChangeCursorPosition((e) => {
       setCursorPosition({ line: e.position.lineNumber, col: e.position.column });
     });
+
+    const clearGhost = () => {
+      const old = document.getElementById('devbox-ai-ghost');
+      if (old) old.remove();
+      const hint = document.getElementById('devbox-ai-hint');
+      if (hint) hint.remove();
+      aiSuggestionRef.current = '';
+      aiDecorationRef.current = null;
+    };
+
+
+    const showGhost = (text, position) => {
+      clearGhost();
+      if (!text) return;
+
+      // Get pixel coordinates of cursor
+      const coords = editor.getScrolledVisiblePosition(position);
+      if (!coords) return;
+
+      // Get the editor DOM container
+      const editorDom = editor.getDomNode();
+      if (!editorDom) return;
+
+      // Build the ghost element
+      const ghostEl = document.createElement('div');
+      ghostEl.id = 'devbox-ai-ghost';
+      // Show first line as inline ghost, rest as below lines
+      const lines = text.split('\n');
+      ghostEl.textContent = lines[0];
+
+      const fontInfo = editor.getOption(monaco.editor.EditorOption.fontInfo);
+      const fontSize = fontInfo.fontSize || 14;
+      const lineHeight = fontInfo.lineHeight || 19;
+
+      // Ghost text
+      ghostEl.style.cssText = `
+        position: absolute;
+        top: ${coords.top}px;
+        left: ${coords.left}px;
+        color: #858585;
+        font-style: italic;
+        font-family: ${fontInfo.fontFamily || "'JetBrains Mono', monospace"};
+        font-size: ${fontSize}px;
+        line-height: ${lineHeight}px;
+        pointer-events: none;
+        z-index: 10;
+        white-space: pre;
+        opacity: 0.8;
+      `;
+      editorDom.style.position = 'relative';
+      editorDom.appendChild(ghostEl);
+
+      aiDecorationRef.current = { clear: clearGhost };
+      aiSuggestionRef.current = text;
+
+    };
+
+    // Accept function — used by Tab key AND the click badge
+    const acceptSuggestion = () => {
+      if (!aiSuggestionRef.current) return;
+      const pos = editor.getPosition();
+      editor.executeEdits('ai-complete', [{
+        range: new monaco.Range(pos.lineNumber, pos.column, pos.lineNumber, pos.column),
+        text: aiSuggestionRef.current,
+        forceMoveMarkers: true
+      }]);
+      clearGhost();
+      editor.focus();
+    };
+
+
+
+    // Fire AI after user stops typing for 900ms
+    editor.onDidChangeModelContent(() => {
+      clearGhost();
+      clearTimeout(aiDebounceRef.current);
+
+      aiDebounceRef.current = setTimeout(async () => {
+        const model = editor.getModel();
+        const position = editor.getPosition();
+        if (!model || !position) return;
+
+        const codeUpToCursor = model.getValueInRange({
+          startLineNumber: 1, startColumn: 1,
+          endLineNumber: position.lineNumber,
+          endColumn: position.column
+        });
+
+        console.log('[AI] Triggered. Code length:', codeUpToCursor.trim().length, '| Token present:', !!authToken);
+
+
+        if (codeUpToCursor.trim().length < 8) return;
+
+        const token = authToken;
+        if (!token) { console.warn('[AI] No auth token'); return; }
+
+        const language = model.getLanguageId();
+        setAiStatus('thinking');
+
+        try {
+          console.log('[AI] Fetching from server...');
+          const res = await fetch('http://localhost:5000/ai/complete', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ code: codeUpToCursor, language, cursorLine: position.lineNumber })
+          });
+
+          console.log('[AI] Server responded:', res.status, res.ok);
+          setAiStatus('done');
+          setTimeout(() => setAiStatus('idle'), 2000);
+
+          if (!res.ok) { console.warn('[AI] Request failed:', res.status); return; }
+          const data = await res.json();
+          console.log('[AI] Data from server:', JSON.stringify(data).substring(0, 100));
+          const completion = (data.completion || '').trim();
+          console.log('[AI] Completion length:', completion.length, '| Preview:', completion.substring(0, 50));
+          if (!completion) return;
+
+          const currentPos = editor.getPosition();
+          showGhost(completion, currentPos);
+        } catch (err) {
+          setAiStatus('idle');
+          console.error('[AI Error]', err.message, err.stack);
+        }
+
+      }, 900);
+    });
+
+    // Tab: accept AI suggestion OR default indent
+    editor.addCommand(monaco.KeyCode.Tab, () => {
+      if (aiSuggestionRef.current) {
+        acceptSuggestion();
+      } else {
+        editor.trigger('keyboard', 'tab', {});
+      }
+    });
+
+    // Escape: dismiss suggestion
+    editor.addCommand(monaco.KeyCode.Escape, () => { clearGhost(); });
+
   };
 
   const toggleTheme = () => {
@@ -256,6 +405,29 @@ function App() {
       <div className="editor-container">
         {/* ── Sidebar ── */}
         <div className="sidebar" style={{ width: `${filesWidth}px` }}>
+          {/* Dashboard Back Button */}
+          <a
+            href="http://localhost:3000"
+            style={{
+              display: 'flex', alignItems: 'center', gap: '7px',
+              padding: '8px 12px',
+              background: 'linear-gradient(90deg, #7c3aed22, transparent)',
+              borderBottom: '1px solid var(--border)',
+              color: '#a78bfa',
+              textDecoration: 'none',
+              fontSize: '0.78rem',
+              fontWeight: 600,
+              letterSpacing: '0.03em',
+              transition: 'background 0.2s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'linear-gradient(90deg, #7c3aed44, transparent)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'linear-gradient(90deg, #7c3aed22, transparent)'}
+            title="Back to Dashboard"
+          >
+            <span style={{ fontSize: '0.9rem' }}>⬅</span>
+            <span>Dashboard</span>
+          </a>
+
           <div className="sidebar-header">
             <span className="sidebar-title">EXPLORER</span>
             <div className="sidebar-actions">
@@ -266,6 +438,65 @@ function App() {
                 <FaFolderPlus size={16} />
               </button>
             </div>
+          </div>
+
+          {/* ── Global Collaboration Actions ── */}
+          <div style={{ padding: '8px', display: 'flex', flexDirection: 'column', gap: '6px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
+            {isCollaborator && (
+              <button
+                className="toolbar-btn"
+                style={{ background: '#d97706', color: 'white', width: '100%', justifyContent: 'center' }}
+                onClick={async () => {
+                  if (!window.confirm("Push your changes to the main workspace? This will overwrite the owner's code with your branch.")) return;
+                  try {
+                    const res = await fetch('http://localhost:9000/push', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ project, ownerId, collaboratorId })
+                    });
+                    const data = await res.json();
+                    alert(data.msg || data.error);
+                  } catch (err) {
+                    alert("Failed to push changes");
+                  }
+                }}
+                title="Merge Branch to Main"
+              >
+                <span>🚀 Push to Global</span>
+              </button>
+            )}
+            <button
+              className="toolbar-btn"
+              style={{ background: '#2563eb', color: 'white', width: '100%', justifyContent: 'center' }}
+              onClick={async () => {
+                if (isCollaborator) {
+                  if (!window.confirm("Pull changes from the main workspace? This will overwrite your branch with the owner's code.")) return;
+                  try {
+                    const res = await fetch('http://localhost:9000/pull', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ project, ownerId, collaboratorId })
+                    });
+                    const data = await res.json();
+                    alert(data.msg || data.error);
+                    // Refresh the current file if it's open
+                    getFileTree();
+                    if (selectedFile) getFileContents();
+                  } catch (err) {
+                    alert("Failed to pull changes");
+                  }
+                } else {
+                  // For Owner: Just refresh the view since global files are already updated
+                  if (!window.confirm("Reload files to view newest global changes?")) return;
+                  getFileTree();
+                  if (selectedFile) getFileContents();
+                  alert("Refreshed with latest global changes!");
+                }
+              }}
+              title="Fetch Latest Global Changes"
+            >
+              <span>📥 Pull from Global</span>
+            </button>
           </div>
           <div className="sidebar-files">
             <FileTree
@@ -336,62 +567,6 @@ function App() {
                   <FaPlay size={12} fill="currentColor" />
                   <span>{isRunning ? "Running..." : "Run"}</span>
                 </button>
-                {isCollaborator && (
-                  <button
-                    className="toolbar-btn"
-                    style={{ background: '#d97706', color: 'white', marginLeft: '10px' }}
-                    onClick={async () => {
-                      if (!window.confirm("Push your changes to the main workspace? This will overwrite the owner's code with your branch.")) return;
-                      try {
-                        const res = await fetch('http://localhost:9000/push', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ project, ownerId, collaboratorId })
-                        });
-                        const data = await res.json();
-                        alert(data.msg || data.error);
-                      } catch (err) {
-                        alert("Failed to push changes");
-                      }
-                    }}
-                    title="Merge Branch to Main"
-                  >
-                    <span>🚀 Push to Global</span>
-                  </button>
-                )}
-                
-                <button
-                  className="toolbar-btn"
-                  style={{ background: '#2563eb', color: 'white', marginLeft: '10px' }}
-                  onClick={async () => {
-                    if (isCollaborator) {
-                      if (!window.confirm("Pull changes from the main workspace? This will overwrite your branch with the owner's code.")) return;
-                      try {
-                        const res = await fetch('http://localhost:9000/pull', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ project, ownerId, collaboratorId })
-                        });
-                        const data = await res.json();
-                        alert(data.msg || data.error);
-                        // Refresh the current file if it's open
-                        getFileTree();
-                        if (selectedFile) getFileContents();
-                      } catch (err) {
-                        alert("Failed to pull changes");
-                      }
-                    } else {
-                      // For Owner: Just refresh the view since global files are already updated
-                      if (!window.confirm("Reload files to view newest global changes?")) return;
-                      getFileTree();
-                      if (selectedFile) getFileContents();
-                      alert("Refreshed with latest global changes!");
-                    }
-                  }}
-                  title="Fetch Latest Global Changes"
-                >
-                  <span>📥 Pull from Global</span>
-                </button>
               </div>
             </div>
           )}
@@ -423,6 +598,7 @@ function App() {
                 lineNumbers: "on",
                 renderLineHighlight: "all",
                 padding: { top: 12 },
+                inlineSuggest: { enabled: true }, // enables ghost-text AI completions
               }}
             />
           ) : (
@@ -478,11 +654,20 @@ function App() {
         </div>
       </div>
 
-      {/* ── Status Bar ── */}
       <div className="status-bar">
         <div className="status-left">
           <span className="status-item">🐳 Docker</span>
           {selectedFile && <span className="status-item">{getLanguageLabel()}</span>}
+          {/* AI Status indicator */}
+          <span className="status-item" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <span style={{
+              width: 7, height: 7, borderRadius: '50%', display: 'inline-block',
+              background: aiStatus === 'thinking' ? '#a78bfa' : aiStatus === 'done' ? '#10b981' : '#4ade80',
+              boxShadow: aiStatus === 'thinking' ? '0 0 6px #a78bfa' : aiStatus === 'done' ? '0 0 6px #10b981' : 'none',
+              transition: 'all 0.3s'
+            }} />
+            AI {aiStatus === 'thinking' ? 'thinking' : 'ready'}
+          </span>
         </div>
         <div className="status-right">
           {selectedFile && (
@@ -491,8 +676,31 @@ function App() {
             </span>
           )}
           <span className="status-item">UTF-8</span>
-          <span className="status-item" style={{ cursor: "pointer" }} onClick={toggleTheme}>
-            {theme === "dark" ? "☀️ Light" : "🌙 Dark"}
+          {/* Animated theme toggle switch */}
+          <span
+            className="status-item"
+            onClick={toggleTheme}
+            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', userSelect: 'none' }}
+          >
+            <span style={{ fontSize: '12px' }}>{theme === 'dark' ? '☀️' : '🌙'}</span>
+            {/* Toggle switch pill */}
+            <span style={{
+              display: 'inline-flex', width: 32, height: 16, borderRadius: 8,
+              background: theme === 'dark' ? '#6d28d9' : '#d1d5db',
+              position: 'relative', transition: 'background 0.3s', flexShrink: 0,
+              border: '1px solid rgba(255,255,255,0.15)'
+            }}>
+              <span style={{
+                position: 'absolute', top: 2,
+                left: theme === 'dark' ? 'calc(100% - 14px)' : 2,
+                width: 10, height: 10, borderRadius: '50%',
+                background: 'white',
+                transition: 'left 0.25s cubic-bezier(0.4,0,0.2,1)',
+                boxShadow: '0 1px 3px rgba(0,0,0,0.4)'
+              }} />
+            </span>
+            <span style={{ fontSize: '11px' }}>{theme === 'dark' ? 'Dark' : 'Light'}</span>
           </span>
         </div>
       </div>

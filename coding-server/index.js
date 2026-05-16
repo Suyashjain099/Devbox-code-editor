@@ -21,8 +21,16 @@ const getBaseDir = (ownerId, collaboratorId, project) => {
     }
     return path.join(userDir, ownerId, project);
   }
-  // Fallback
   return ownerId ? path.join(userDir, ownerId) : project ? path.join(userDir, project) : userDir;
+};
+
+// Prevent path traversal attacks (e.g. '../../etc/passwd')
+const sanitizeFilePath = (filePath, baseDir) => {
+  const resolved = path.resolve(baseDir, filePath);
+  if (!resolved.startsWith(path.resolve(baseDir))) {
+    return null; // Attempt to escape the base directory
+  }
+  return resolved;
 };
 
 // Ensure user directory exists
@@ -48,35 +56,8 @@ app.use(express.json());
 // ─────────────────────────────────────────────
 // Terminal Process (node-pty)
 // ─────────────────────────────────────────────
-let ptyProcess = null;
-
-function createPtyProcess() {
-  const proc = pty.spawn('bash', [], {
-    name: 'xterm-256color',
-    cols: 80,
-    rows: 30,
-    cwd: userDir,
-    env: { ...process.env, TERM: 'xterm-256color' }
-  });
-
-  proc.onData(data => {
-    console.log('[PTY Output]', JSON.stringify(data));
-    // Broadcast terminal output to ALL connected clients
-    io.emit('terminal:data', data);
-  });
-
-  proc.on('exit', (exitCode, signal) => {
-    console.log(`[PTY] Exited (code: ${exitCode}). Restarting...`);
-    setTimeout(() => {
-      ptyProcess = createPtyProcess();
-    }, 500);
-  });
-
-  console.log('[PTY] Bash terminal spawned');
-  return proc;
-}
-
-ptyProcess = createPtyProcess();
+// Per-socket PTY map — each connected client gets its own bash shell
+const ptyProcesses = new Map();
 
 // ─────────────────────────────────────────────
 // File Watcher (Chokidar) — debounced
@@ -103,22 +84,34 @@ watcher.on('all', () => {
 io.on('connection', (socket) => {
   console.log(`[Socket] Connected: ${socket.id}`);
 
+  // Create an isolated bash shell for THIS socket only
+  const pty_proc = pty.spawn('bash', [], {
+    name: 'xterm-256color',
+    cols: 80,
+    rows: 30,
+    cwd: userDir,
+    env: { ...process.env, TERM: 'xterm-256color' }
+  });
+  ptyProcesses.set(socket.id, pty_proc);
+
+  // Send PTY output only to THIS socket
+  pty_proc.onData(data => {
+    socket.emit('terminal:data', data);
+  });
+
   // Send initial file tree refresh
   socket.emit('file:refresh');
 
-  // Send a newline to PTY to trigger a fresh bash prompt for this client
-  setTimeout(() => {
-    if (ptyProcess) {
-      ptyProcess.write('\n');
-    }
-  }, 200);
+  // Trigger fresh prompt
+  setTimeout(() => pty_proc.write('\n'), 200);
 
   // ── File Operations ──────────────────────
   socket.on('file:change', async ({ path: filePath, content, project, ownerId, collaboratorId }) => {
     if (!filePath) return;
     try {
       const baseDir = getBaseDir(ownerId, collaboratorId, project);
-      const fullPath = path.join(baseDir, filePath);
+      const fullPath = sanitizeFilePath(filePath, baseDir);
+      if (!fullPath) return socket.emit('error', { message: 'Invalid file path' });
       await fs.mkdir(path.dirname(fullPath), { recursive: true });
       await fs.writeFile(fullPath, content);
       
@@ -126,7 +119,7 @@ io.on('connection', (socket) => {
       // If collaborator, save to DB under their own ID to isolate state
       const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
       if (dbUserId && project) {
-        fetch('http://parth-auth-server:5000/files/sync', {
+        fetch('http://devbox-auth-server:5000/files/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: dbUserId, projectName: project, path: filePath, content, isDirectory: false })
@@ -142,7 +135,8 @@ io.on('connection', (socket) => {
     if (!filePath) return;
     try {
       const baseDir = getBaseDir(ownerId, collaboratorId, project);
-      const fullPath = path.join(baseDir, filePath);
+      const fullPath = sanitizeFilePath(filePath, baseDir);
+      if (!fullPath) return socket.emit('error', { message: 'Invalid file path' });
       await fs.mkdir(path.dirname(fullPath), { recursive: true });
       await fs.writeFile(fullPath, '');
       io.emit('file:refresh');
@@ -150,7 +144,7 @@ io.on('connection', (socket) => {
       // Sync to MongoDB
       const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
       if (dbUserId && project) {
-        fetch('http://parth-auth-server:5000/files/sync', {
+        fetch('http://devbox-auth-server:5000/files/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: dbUserId, projectName: project, path: filePath, content: '', isDirectory: false })
@@ -166,7 +160,8 @@ io.on('connection', (socket) => {
     if (!filePath) return;
     try {
       const baseDir = getBaseDir(ownerId, collaboratorId, project);
-      const fullPath = path.join(baseDir, filePath);
+      const fullPath = sanitizeFilePath(filePath, baseDir);
+      if (!fullPath) return socket.emit('error', { message: 'Invalid file path' });
       const stat = await fs.stat(fullPath);
       if (stat.isDirectory()) {
         await fs.rm(fullPath, { recursive: true, force: true });
@@ -178,7 +173,7 @@ io.on('connection', (socket) => {
       // Sync to MongoDB
       const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
       if (dbUserId && project) {
-        fetch('http://parth-auth-server:5000/files/sync', {
+        fetch('http://devbox-auth-server:5000/files/sync', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: dbUserId, projectName: project, path: filePath })
@@ -203,7 +198,7 @@ io.on('connection', (socket) => {
       // Sync to MongoDB
       const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
       if (dbUserId && project) {
-        fetch('http://parth-auth-server:5000/files/rename', {
+        fetch('http://devbox-auth-server:5000/files/rename', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: dbUserId, projectName: project, oldPath, newPath })
@@ -225,7 +220,7 @@ io.on('connection', (socket) => {
       // Sync to MongoDB
       const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
       if (dbUserId && project) {
-        fetch('http://parth-auth-server:5000/files/sync', {
+        fetch('http://devbox-auth-server:5000/files/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: dbUserId, projectName: project, path: folderPath, content: '', isDirectory: true })
@@ -239,24 +234,26 @@ io.on('connection', (socket) => {
 
   // ── Terminal Operations ──────────────────
   socket.on('terminal:write', (data, project, ownerId, collaboratorId) => {
-    if (ptyProcess) {
+    const pty_proc = ptyProcesses.get(socket.id);
+    if (pty_proc) {
       if (data === "cd_project") {
         if (ownerId && project) {
           const baseDir = getBaseDir(ownerId, collaboratorId, project);
-          ptyProcess.write(`cd "${baseDir}"\n`);
+          pty_proc.write(`cd "${baseDir}"\n`);
         } else if (project) {
-          ptyProcess.write(`cd "/app/user/${project}"\n`);
+          pty_proc.write(`cd "/app/user/${project}"\n`);
         }
         return;
       }
-      ptyProcess.write(data);
+      pty_proc.write(data);
     }
   });
 
   socket.on('terminal:resize', ({ cols, rows }) => {
+    const pty_proc = ptyProcesses.get(socket.id);
     try {
-      if (ptyProcess && cols && rows) {
-        ptyProcess.resize(Math.max(cols, 10), Math.max(rows, 2));
+      if (pty_proc && cols && rows) {
+        pty_proc.resize(Math.max(cols, 10), Math.max(rows, 2));
       }
     } catch (err) {
       // ignore resize errors
@@ -265,6 +262,11 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log(`[Socket] Disconnected: ${socket.id}`);
+    const pty_proc = ptyProcesses.get(socket.id);
+    if (pty_proc) {
+      try { pty_proc.kill(); } catch (e) { /* ignore */ }
+      ptyProcesses.delete(socket.id);
+    }
   });
 });
 
@@ -294,7 +296,7 @@ app.get('/files', async (req, res) => {
       
       if (fetchUserId && project) {
         try {
-          const response = await fetch(`http://parth-auth-server:5000/files/project?userId=${fetchUserId}&projectName=${project}`);
+          const response = await fetch(`http://devbox-auth-server:5000/files/project?userId=${fetchUserId}&projectName=${project}`);
           if (response.ok) {
             const data = await response.json();
             for (const file of data.files) {
@@ -350,11 +352,12 @@ app.post('/push', async (req, res) => {
     const collabDir = getBaseDir(ownerId, collaboratorId, project);
     const ownerDir = getBaseDir(ownerId, ownerId, project);
 
-    // Recursively copy files from collaborator to owner
+    // Recursively copy files from collaborator to owner (wipe owner dir first to reflect deletions)
+    await fs.rm(ownerDir, { recursive: true, force: true });
     await fs.cp(collabDir, ownerDir, { recursive: true, force: true });
 
     // Sync to DB
-    fetch('http://parth-auth-server:5000/files/push', {
+    fetch('http://devbox-auth-server:5000/files/push', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ownerId, collaboratorId, projectName: project })
@@ -378,11 +381,12 @@ app.post('/pull', async (req, res) => {
     const collabDir = getBaseDir(ownerId, collaboratorId, project);
     const ownerDir = getBaseDir(ownerId, ownerId, project);
 
-    // Recursively copy files from owner to collaborator
+    // Recursively copy files from owner to collaborator (wipe collab dir first to reflect deletions)
+    await fs.rm(collabDir, { recursive: true, force: true });
     await fs.cp(ownerDir, collabDir, { recursive: true, force: true });
 
     // Sync to DB
-    fetch('http://parth-auth-server:5000/files/pull', {
+    fetch('http://devbox-auth-server:5000/files/pull', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ownerId, collaboratorId, projectName: project })

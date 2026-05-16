@@ -18,35 +18,14 @@ const Home = () => {
                 </p>
                 <div className="hero-buttons">
                     <Link to="/signup" className="btn-primary hero-btn">Start Coding for Free</Link>
-                    <Link to="/login" className="btn-secondary hero-btn">View Documentation</Link>
+                    <Link to="/learn" className="btn-secondary hero-btn">View Documentation</Link>
                 </div>
             </div>
 
             <div className="editor-showcase">
                 <div className="editor-glow"></div>
-                <div className="editor-window">
-                    <div className="editor-header">
-                        <div className="traffic-lights">
-                            <span className="dot red"></span>
-                            <span className="dot yellow"></span>
-                            <span className="dot green"></span>
-                        </div>
-                        <div className="file-name">server.js</div>
-                    </div>
-                    <div className="editor-body">
-                        <pre>
-<code><span className="token keyword">import</span> express <span className="token keyword">from</span> <span className="token string">'express'</span>;
-<span className="token keyword">import</span> mongoose <span className="token keyword">from</span> <span className="token string">'mongoose'</span>;
-
-<span className="token keyword">const</span> app <span className="token operator">=</span> <span className="token function">express</span>();
-
-app.<span className="token function">get</span>(<span className="token string">'/'</span>, (req, res) <span className="token operator">=&gt;</span> {"{"}
-    res.<span className="token function">json</span>({"{"} <span className="token property">status</span>: <span className="token string">'DevBox IDE is running! 🚀'</span> {"}"});
-{"}"});
-
-app.<span className="token function">listen</span>(<span className="token number">3000</span>, () <span className="token operator">=&gt;</span> console.<span className="token function">log</span>(<span className="token string">'Ready.'</span>));</code>
-                        </pre>
-                    </div>
+                <div className="editor-window image-mockup">
+                    <img src="/ide_mockup.png" alt="DevBox IDE Workspace" className="mockup-img" />
                 </div>
             </div>
         </div>
@@ -58,20 +37,29 @@ app.<span className="token function">listen</span>(<span className="token number
             </div>
             
             <div className="bento-grid">
-                <div className="bento-card">
-                    <div className="bento-icon"><FaTerminal /></div>
-                    <h3>Instant Execution</h3>
-                    <p>No local environment needed. Run Node, Python, C++, and Go instantly with our powerful backend compilers.</p>
+                <div className="bento-card" style={{ backgroundImage: 'url(/img_execution.png)', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(10,10,10,1) 0%, rgba(10,10,10,0.6) 100%)', zIndex: 0 }}></div>
+                    <div style={{ position: 'relative', zIndex: 1 }}>
+                        <div className="bento-icon"><FaTerminal /></div>
+                        <h3>Instant Execution</h3>
+                        <p>No local environment needed. Run Node, Python, C++, and Go instantly with our powerful backend compilers.</p>
+                    </div>
                 </div>
-                <div className="bento-card highlighted">
-                    <div className="bento-icon"><FaUsers /></div>
-                    <h3>Real-time Collaboration</h3>
-                    <p>Share your workspace and code together as easily as editing a Google Doc. Conflict-free and blazing fast.</p>
+                <div className="bento-card highlighted" style={{ backgroundImage: 'url(/collab_abstract.png)', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(10,10,10,1) 0%, rgba(10,10,10,0.4) 100%)', zIndex: 0 }}></div>
+                    <div style={{ position: 'relative', zIndex: 1 }}>
+                        <div className="bento-icon"><FaUsers /></div>
+                        <h3>Real-time Collaboration</h3>
+                        <p>Share your workspace and code together as easily as editing a Google Doc. Conflict-free and blazing fast.</p>
+                    </div>
                 </div>
-                <div className="bento-card">
-                    <div className="bento-icon"><FaBolt /></div>
-                    <h3>Zero Latency</h3>
-                    <p>Built on WebSockets for real-time terminal streaming. You'll forget you're even using a browser.</p>
+                <div className="bento-card" style={{ backgroundImage: 'url(/img_latency.png)', backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative', overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(10,10,10,1) 0%, rgba(10,10,10,0.6) 100%)', zIndex: 0 }}></div>
+                    <div style={{ position: 'relative', zIndex: 1 }}>
+                        <div className="bento-icon"><FaBolt /></div>
+                        <h3>Zero Latency</h3>
+                        <p>Built on WebSockets for real-time terminal streaming. You'll forget you're even using a browser.</p>
+                    </div>
                 </div>
             </div>
         </section>

@@ -6,7 +6,7 @@ services:
     build:
       context: ./coding-server
       dockerfile: Dockerfile
-    container_name: parth-coding-server
+    container_name: devbox-coding-server
     ports:
       - "9000:9000"
     volumes:
@@ -26,10 +26,12 @@ services:
     build:
       context: ./server
       dockerfile: Dockerfile
-    container_name: parth-auth-server
+    container_name: devbox-auth-server
     ports:
       - "5000:5000"
     restart: unless-stopped
+    env_file:
+      - ./server/.env
     environment:
       - NODE_ENV=production
       - PORT=5000

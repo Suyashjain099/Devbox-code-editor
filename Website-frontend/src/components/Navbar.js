@@ -1,6 +1,5 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FaCode } from 'react-icons/fa';
 import './Navbar.css';
 
 const Navbar = () => {
@@ -20,16 +19,16 @@ const Navbar = () => {
           <div className="logo">
             <Link to="/" className="logo-link">
               <div className="logo-icon">
-                <FaCode />
+                <img src="/logo.png" alt="DevBox Logo" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
               </div>
               <h1 className='name'>DevBox</h1>
             </Link>
           </div>
           
           <div className="nav-links">
-            <Link to="/" className="nav-link">Features</Link>
-            <Link to="/" className="nav-link">Learn</Link>
-            <Link to="/" className="nav-link">Community</Link>
+            <Link to="/features" className="nav-link">Features</Link>
+            <Link to="/learn" className="nav-link">Learn</Link>
+            <Link to="/community" className="nav-link">Community</Link>
           </div>
           
           <div className='nav-actions'>
