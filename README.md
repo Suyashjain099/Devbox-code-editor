@@ -1,5 +1,5 @@
 <h1 align="center">
-  🚀 DevBox (Replit Clone)
+  🚀 DevBox 
 </h1>
 
 <p align="center">
