@@ -19,7 +19,7 @@
 
 ## 📖 Overview
 
-**DevBox** is a powerful cloud-based coding platform inspired by Replit. It provides a full-fledged IDE right in your browser, featuring a sophisticated code editor, an integrated terminal, real-time file synchronization, and scalable backend infrastructure. 
+**DevBox** is a powerful cloud-based coding platform . It provides a full-fledged IDE right in your browser, featuring a sophisticated code editor, an integrated terminal, real-time file synchronization, and scalable backend infrastructure. 
 
 Whether you're writing simple scripts or building complex applications, this platform offers the tools you need to code efficiently from anywhere.
 
@@ -118,25 +118,6 @@ This command utilizes `concurrently` to:
 
 ### Infrastructure
 - **Containerization:** Docker & Docker Compose
-
----
-
-## 🤝 Contributing
-
-Contributions, issues, and feature requests are welcome! 
-Feel free to check out the [issues page](https://github.com/yourusername/devbox/issues).
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-## 📜 License
-
-This project is licensed under the ISC License.
 
 ---
 <p align="center">
