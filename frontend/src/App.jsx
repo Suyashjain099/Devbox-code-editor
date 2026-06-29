@@ -356,7 +356,17 @@ function App() {
           setAiStatus('done');
           setTimeout(() => setAiStatus('idle'), 2000);
 
-          if (!res.ok) { console.warn('[AI] Request failed:', res.status); return; }
+          if (!res.ok) {
+            let errorText = '';
+            try {
+              const errData = await res.json();
+              errorText = errData.msg || '';
+            } catch (e) {
+              try { errorText = await res.text(); } catch (e2) {}
+            }
+            console.warn('[AI] Request failed:', res.status, errorText);
+            return;
+          }
           const data = await res.json();
           console.log('[AI] Data from server:', JSON.stringify(data).substring(0, 100));
           const completion = (data.completion || '').trim();
