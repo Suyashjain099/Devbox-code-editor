@@ -1,5 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+
+// Helper: decode JWT payload without a library (base64 decode)
+const getUserIdFromToken = (token) => {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.id;
+  } catch {
+    return null;
+  }
+};
+
 const CODING_URL = process.env.REACT_APP_CODING_URL || `http://${window.location.hostname}:9000`;
 const EDITOR_URL = process.env.REACT_APP_EDITOR_URL || `http://${window.location.hostname}:5173`;
 
@@ -8,6 +19,9 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const navigate = useNavigate();
+
+  const token = localStorage.getItem('token');
+  const userId = getUserIdFromToken(token);
 
   useEffect(() => {
     fetchProjects();
@@ -55,7 +69,7 @@ const Dashboard = () => {
   };
 
   const openProject = (projectName) => {
-    window.location.href = `${EDITOR_URL}/?project=${encodeURIComponent(projectName)}`;
+    window.location.href = `${EDITOR_URL}/?project=${encodeURIComponent(projectName)}&ownerId=${userId}&collaboratorId=${userId}&token=${token}`;
   };
 
   const handleLogout = () => {
