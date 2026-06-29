@@ -1,7 +1,7 @@
 import React from 'react';
 import './Home.css';
 import { Link } from 'react-router-dom';
-import { FaTwitter, FaGithub, FaLinkedin, FaTerminal, FaCode, FaUsers, FaBolt } from 'react-icons/fa';
+import { FaTwitter, FaGithub, FaLinkedin, FaTerminal, FaUsers, FaBolt } from 'react-icons/fa';
 
 const Home = () => {
   return (
@@ -84,9 +84,9 @@ const Home = () => {
             <div>
                 <h3 className="footer-heading-icons">Connect</h3>
                 <div className="footer-icons">
-                    <a href="#" className="footer-icon-link"><FaTwitter className="icon" /></a>
-                    <a href="#" className="footer-icon-link"><FaGithub className="icon" /></a>
-                    <a href="#" className="footer-icon-link"><FaLinkedin className="icon" /></a>
+                    <a href="https://twitter.com" className="footer-icon-link"><FaTwitter className="icon" /></a>
+                    <a href="https://github.com" className="footer-icon-link"><FaGithub className="icon" /></a>
+                    <a href="https://linkedin.com" className="footer-icon-link"><FaLinkedin className="icon" /></a>
                 </div>
             </div>
         </div>

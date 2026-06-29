@@ -28,6 +28,7 @@ const Dashboard = () => {
   useEffect(() => {
     fetchProjects();
     fetchInvites();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchInvites = async () => {
