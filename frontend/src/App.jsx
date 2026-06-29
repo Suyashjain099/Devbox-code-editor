@@ -31,6 +31,10 @@ function App() {
     || (() => { try { return sessionStorage.getItem('devbox_token'); } catch(e) { return null; } })()
     || (() => { try { return localStorage.getItem('token'); } catch(e) { return null; } })();
 
+  console.log('[Auth Debug] urlParams:', window.location.search);
+  console.log('[Auth Debug] urlToken:', urlToken);
+  console.log('[Auth Debug] authToken:', authToken);
+
   if (!authToken) {
     window.location.replace(`${websiteUrl}/login`);
     return null;
