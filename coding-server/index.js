@@ -13,6 +13,7 @@ const pty = require('node-pty');
 // ─────────────────────────────────────────────
 const PORT = process.env.PORT || 9000;
 const userDir = path.join(__dirname, 'user');
+const AUTH_SERVER_URL = process.env.AUTH_SERVER_URL || 'http://devbox-auth-server:5000';
 
 const getBaseDir = (ownerId, collaboratorId, project) => {
   if (ownerId && project) {
@@ -119,7 +120,7 @@ io.on('connection', (socket) => {
       // If collaborator, save to DB under their own ID to isolate state
       const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
       if (dbUserId && project) {
-        const syncRes = await fetch('http://devbox-auth-server:5000/files/sync', {
+        const syncRes = await fetch(`${AUTH_SERVER_URL}/files/sync`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: dbUserId, projectName: project, path: filePath, content, isDirectory: false })
@@ -144,7 +145,7 @@ io.on('connection', (socket) => {
       // Sync to MongoDB
       const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
       if (dbUserId && project) {
-        const syncRes = await fetch('http://devbox-auth-server:5000/files/sync', {
+        const syncRes = await fetch(`${AUTH_SERVER_URL}/files/sync`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: dbUserId, projectName: project, path: filePath, content: '', isDirectory: false })
@@ -174,7 +175,7 @@ io.on('connection', (socket) => {
       // Sync to MongoDB
       const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
       if (dbUserId && project) {
-        const syncRes = await fetch('http://devbox-auth-server:5000/files/sync', {
+        const syncRes = await fetch(`${AUTH_SERVER_URL}/files/sync`, {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: dbUserId, projectName: project, path: filePath })
@@ -200,7 +201,7 @@ io.on('connection', (socket) => {
       // Sync to MongoDB
       const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
       if (dbUserId && project) {
-        const syncRes = await fetch('http://devbox-auth-server:5000/files/rename', {
+        const syncRes = await fetch(`${AUTH_SERVER_URL}/files/rename`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: dbUserId, projectName: project, oldPath, newPath })
@@ -223,7 +224,7 @@ io.on('connection', (socket) => {
       // Sync to MongoDB
       const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
       if (dbUserId && project) {
-        const syncRes = await fetch('http://devbox-auth-server:5000/files/sync', {
+        const syncRes = await fetch(`${AUTH_SERVER_URL}/files/sync`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: dbUserId, projectName: project, path: folderPath, content: '', isDirectory: true })
@@ -301,7 +302,7 @@ app.get('/files', async (req, res) => {
       
       if (fetchUserId && project) {
         try {
-          const response = await fetch(`http://devbox-auth-server:5000/files/project?userId=${fetchUserId}&projectName=${project}`);
+          const response = await fetch(`${AUTH_SERVER_URL}/files/project?userId=${fetchUserId}&projectName=${project}`);
           if (response.ok) {
             const data = await response.json();
             for (const file of data.files) {
@@ -362,7 +363,7 @@ app.post('/push', async (req, res) => {
     await fs.cp(collabDir, ownerDir, { recursive: true, force: true });
 
     // Sync to DB
-    fetch('http://devbox-auth-server:5000/files/push', {
+    fetch(`${AUTH_SERVER_URL}/files/push`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ownerId, collaboratorId, projectName: project })
@@ -391,7 +392,7 @@ app.post('/pull', async (req, res) => {
     await fs.cp(ownerDir, collabDir, { recursive: true, force: true });
 
     // Sync to DB
-    fetch('http://devbox-auth-server:5000/files/pull', {
+    fetch(`${AUTH_SERVER_URL}/files/pull`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ownerId, collaboratorId, projectName: project })
