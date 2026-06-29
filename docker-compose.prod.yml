@@ -55,6 +55,26 @@ services:
       - 8.8.8.8
       - 8.8.4.4
 
+  # Landing/Dashboard Website frontend
+  website-frontend:
+    build:
+      context: ./Website-frontend
+      dockerfile: Dockerfile
+    container_name: devbox-website-frontend
+    ports:
+      - "3000:80"
+    restart: unless-stopped
+
+  # Code Editor frontend
+  editor-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: devbox-editor-frontend
+    ports:
+      - "5173:80"
+    restart: unless-stopped
+
 volumes:
   mongo-data:
   coding-data:
