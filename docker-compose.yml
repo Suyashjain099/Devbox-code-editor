@@ -1,6 +1,19 @@
-version: '3.8'
-
 services:
+  mongo:
+    image: mongo:7
+    container_name: devbox-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval \"db.adminCommand({ ping: 1 }).ok\" mongodb://localhost:27017/admin | grep 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
   # Coding execution server (runs inside Docker with all compilers)
   coding-server:
     build:
@@ -30,11 +43,18 @@ services:
     ports:
       - "5000:5000"
     restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
     env_file:
       - ./server/.env
     environment:
       - NODE_ENV=production
       - PORT=5000
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
 
 volumes:
+  mongo-data:
   coding-data:

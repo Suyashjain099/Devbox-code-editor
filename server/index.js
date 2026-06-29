@@ -18,6 +18,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'devbox_fallback_secret_change_me';
 dns.setServers(['8.8.8.8', '8.8.4.4']);
 
 const app = express();
+app.set('trust proxy', 1);
 
 // Middleware
 app.use(bodyParser.json());
@@ -48,31 +49,26 @@ app.use('/invites', apiLimiter);
 app.use('/files', apiLimiter);
 
 // ── Path Sanitization Helper ───────────────
-// Prevents path traversal attacks like '../../etc/passwd'
+// Prevents path traversal attacks like '../../etc/passwd' on Unix and Windows
 const sanitizePath = (filePath) => {
-    // Normalize removes double slashes, .., .
-    const normalized = path.normalize(filePath);
-    // Reject absolute paths or paths that try to escape
-    if (normalized.startsWith('/') || normalized.startsWith('..') || normalized.includes('../')) {
+    if (typeof filePath !== 'string') return null;
+    const virtualRoot = path.resolve('/safe_root');
+    const resolved = path.resolve(virtualRoot, filePath);
+    if (!resolved.startsWith(virtualRoot)) {
         return null;
     }
-    return normalized;
+    return path.relative(virtualRoot, resolved).replace(/\\/g, '/');
 };
 
 // MongoDB connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb+srv://new-user:1234@cluster0.h7v0tbt.mongodb.net/', {
+const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/devbox';
+mongoose.connect(mongoUri, {
     useNewUrlParser: true,
     useUnifiedTopology: true
 }).then(() => console.log('MongoDB connected'))
   .catch(err => console.log(err));
 
-// User schema
-const userSchema = new mongoose.Schema({
-    email: { type: String, required: true, unique: true },
-    password: { type: String, required: true }
-});
-
-const User = mongoose.model('User', userSchema);
+const User = require('./model/User');
 
 // Routes
 
@@ -305,7 +301,9 @@ app.post('/invites/reject/:inviteId', authMiddleware, async (req, res) => {
 
 // Upsert a file or folder
 app.post('/files/sync', async (req, res) => {
-    const { userId, projectName, path, content, isDirectory } = req.body;
+    const { userId, projectName, path: rawPath, content, isDirectory } = req.body;
+    const path = sanitizePath(rawPath);
+    if (!path) return res.status(400).json({ msg: 'Invalid file path' });
     try {
         await File.findOneAndUpdate(
             { userId, projectName, path },
@@ -321,7 +319,9 @@ app.post('/files/sync', async (req, res) => {
 
 // Delete a file or folder
 app.delete('/files/sync', async (req, res) => {
-    const { userId, projectName, path } = req.body;
+    const { userId, projectName, path: rawPath } = req.body;
+    const path = sanitizePath(rawPath);
+    if (!path) return res.status(400).json({ msg: 'Invalid file path' });
     try {
         // Delete the exact file/folder
         await File.deleteOne({ userId, projectName, path });
@@ -336,7 +336,10 @@ app.delete('/files/sync', async (req, res) => {
 
 // Rename a file or folder
 app.post('/files/rename', async (req, res) => {
-    const { userId, projectName, oldPath, newPath } = req.body;
+    const { userId, projectName, oldPath: rawOld, newPath: rawNew } = req.body;
+    const oldPath = sanitizePath(rawOld);
+    const newPath = sanitizePath(rawNew);
+    if (!oldPath || !newPath) return res.status(400).json({ msg: 'Invalid file paths' });
     try {
         const file = await File.findOne({ userId, projectName, path: oldPath });
         if (file) {
@@ -459,7 +462,7 @@ Complete from exactly where the code ends:`;
 
     try {
         const response = await fetch(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:generateContent?key=${GEMINI_API_KEY}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -491,4 +494,4 @@ Complete from exactly where the code ends:`;
 
 // Start the server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

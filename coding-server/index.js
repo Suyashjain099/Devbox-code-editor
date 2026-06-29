@@ -119,11 +119,12 @@ io.on('connection', (socket) => {
       // If collaborator, save to DB under their own ID to isolate state
       const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
       if (dbUserId && project) {
-        fetch('http://devbox-auth-server:5000/files/sync', {
+        const syncRes = await fetch('http://devbox-auth-server:5000/files/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: dbUserId, projectName: project, path: filePath, content, isDirectory: false })
-        }).catch(err => console.error('Failed to sync to DB:', err));
+        });
+        if (!syncRes.ok) throw new Error(`DB sync failed with status ${syncRes.status}`);
       }
     } catch (err) {
       console.error('[File:Change] Error:', err.message);
@@ -139,17 +140,18 @@ io.on('connection', (socket) => {
       if (!fullPath) return socket.emit('error', { message: 'Invalid file path' });
       await fs.mkdir(path.dirname(fullPath), { recursive: true });
       await fs.writeFile(fullPath, '');
-      io.emit('file:refresh');
       
       // Sync to MongoDB
       const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
       if (dbUserId && project) {
-        fetch('http://devbox-auth-server:5000/files/sync', {
+        const syncRes = await fetch('http://devbox-auth-server:5000/files/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: dbUserId, projectName: project, path: filePath, content: '', isDirectory: false })
-        }).catch(err => console.error('Failed to sync to DB:', err));
+        });
+        if (!syncRes.ok) throw new Error(`DB sync failed with status ${syncRes.status}`);
       }
+      io.emit('file:refresh');
     } catch (err) {
       console.error('[File:Create] Error:', err.message);
       socket.emit('error', { message: 'Failed to create file' });
@@ -168,17 +170,18 @@ io.on('connection', (socket) => {
       } else {
         await fs.unlink(fullPath);
       }
-      io.emit('file:refresh');
       
       // Sync to MongoDB
       const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
       if (dbUserId && project) {
-        fetch('http://devbox-auth-server:5000/files/sync', {
+        const syncRes = await fetch('http://devbox-auth-server:5000/files/sync', {
             method: 'DELETE',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: dbUserId, projectName: project, path: filePath })
-        }).catch(err => console.error('Failed to delete in DB:', err));
+        });
+        if (!syncRes.ok) throw new Error(`DB sync failed with status ${syncRes.status}`);
       }
+      io.emit('file:refresh');
     } catch (err) {
       console.error('[File:Delete] Error:', err.message);
       socket.emit('error', { message: 'Failed to delete' });
@@ -193,17 +196,18 @@ io.on('connection', (socket) => {
       const fullNew = path.join(baseDir, newPath);
       await fs.mkdir(path.dirname(fullNew), { recursive: true });
       await fs.rename(fullOld, fullNew);
-      io.emit('file:refresh');
       
       // Sync to MongoDB
       const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
       if (dbUserId && project) {
-        fetch('http://devbox-auth-server:5000/files/rename', {
+        const syncRes = await fetch('http://devbox-auth-server:5000/files/rename', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: dbUserId, projectName: project, oldPath, newPath })
-        }).catch(err => console.error('Failed to rename in DB:', err));
+        });
+        if (!syncRes.ok) throw new Error(`DB sync failed with status ${syncRes.status}`);
       }
+      io.emit('file:refresh');
     } catch (err) {
       console.error('[File:Rename] Error:', err.message);
       socket.emit('error', { message: 'Failed to rename' });
@@ -215,17 +219,18 @@ io.on('connection', (socket) => {
     try {
       const baseDir = getBaseDir(ownerId, collaboratorId, project);
       await fs.mkdir(path.join(baseDir, folderPath), { recursive: true });
-      io.emit('file:refresh');
       
       // Sync to MongoDB
       const dbUserId = (collaboratorId && collaboratorId !== ownerId) ? collaboratorId : ownerId;
       if (dbUserId && project) {
-        fetch('http://devbox-auth-server:5000/files/sync', {
+        const syncRes = await fetch('http://devbox-auth-server:5000/files/sync', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: dbUserId, projectName: project, path: folderPath, content: '', isDirectory: true })
-        }).catch(err => console.error('Failed to sync folder to DB:', err));
+        });
+        if (!syncRes.ok) throw new Error(`DB sync failed with status ${syncRes.status}`);
       }
+      io.emit('file:refresh');
     } catch (err) {
       console.error('[Folder:Create] Error:', err.message);
       socket.emit('error', { message: 'Failed to create folder' });
