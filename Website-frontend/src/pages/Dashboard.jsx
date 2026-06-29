@@ -16,7 +16,7 @@ const Dashboard = () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch('http://localhost:9000/files');
+      const res = await fetch(`http://${window.location.hostname}:9000/files`);
       if (!res.ok) throw new Error('Could not reach coding server');
       const data = await res.json();
       if (data && data.tree) {
@@ -40,7 +40,7 @@ const Dashboard = () => {
     const name = prompt('Enter new project name:');
     if (!name || name.trim() === '') return;
     try {
-      const res = await fetch('http://localhost:9000/folder', {
+      const res = await fetch(`http://${window.location.hostname}:9000/folder`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: name.trim() })
@@ -54,7 +54,7 @@ const Dashboard = () => {
   };
 
   const openProject = (projectName) => {
-    window.location.href = `http://localhost:5173/?project=${encodeURIComponent(projectName)}`;
+    window.location.href = `http://${window.location.hostname}:5173/?project=${encodeURIComponent(projectName)}`;
   };
 
   const handleLogout = () => {

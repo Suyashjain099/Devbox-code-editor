@@ -28,7 +28,7 @@ function App() {
     || (() => { try { return localStorage.getItem('token'); } catch(e) { return null; } })();
 
   if (!authToken) {
-    window.location.replace('http://localhost:3000/login');
+    window.location.replace(`http://${window.location.hostname}:3000/login`);
     return null;
   }
 
@@ -82,7 +82,7 @@ function App() {
   // ── Fetch file tree ────────────────────────
   const getFileTree = useCallback(async () => {
     try {
-      const response = await fetch(`http://localhost:9000/files?project=${project}&ownerId=${ownerId}&collaboratorId=${collaboratorId}`);
+      const response = await fetch(`http://${window.location.hostname}:9000/files?project=${project}&ownerId=${ownerId}&collaboratorId=${collaboratorId}`);
       const result = await response.json();
       setFileTree(result.tree);
     } catch (err) {
@@ -95,7 +95,7 @@ function App() {
     if (!selectedFile) return;
     try {
       const response = await fetch(
-        `http://localhost:9000/files/content?path=${encodeURIComponent(selectedFile)}&project=${project}&ownerId=${ownerId}&collaboratorId=${collaboratorId}`
+        `http://${window.location.hostname}:9000/files/content?path=${encodeURIComponent(selectedFile)}&project=${project}&ownerId=${ownerId}&collaboratorId=${collaboratorId}`
       );
       const result = await response.json();
       setSelectedFileContent(result.content);
@@ -335,7 +335,7 @@ function App() {
 
         try {
           console.log('[AI] Fetching from server...');
-          const res = await fetch('http://localhost:5000/ai/complete', {
+          const res = await fetch(`http://${window.location.hostname}:5000/ai/complete`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -407,7 +407,7 @@ function App() {
         <div className="sidebar" style={{ width: `${filesWidth}px` }}>
           {/* Dashboard Back Button */}
           <a
-            href="http://localhost:3000"
+            href={`http://${window.location.hostname}:3000`}
             style={{
               display: 'flex', alignItems: 'center', gap: '7px',
               padding: '8px 12px',
@@ -449,7 +449,7 @@ function App() {
                 onClick={async () => {
                   if (!window.confirm("Push your changes to the main workspace? This will overwrite the owner's code with your branch.")) return;
                   try {
-                    const res = await fetch('http://localhost:9000/push', {
+                    const res = await fetch(`http://${window.location.hostname}:9000/push`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ project, ownerId, collaboratorId })
@@ -472,7 +472,7 @@ function App() {
                 if (isCollaborator) {
                   if (!window.confirm("Pull changes from the main workspace? This will overwrite your branch with the owner's code.")) return;
                   try {
-                    const res = await fetch('http://localhost:9000/pull', {
+                    const res = await fetch(`http://${window.location.hostname}:9000/pull`, {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ project, ownerId, collaboratorId })

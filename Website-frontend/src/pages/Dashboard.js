@@ -12,7 +12,7 @@ const getUserIdFromToken = (token) => {
   }
 };
 
-const AUTH_URL = 'http://localhost:5000';
+const AUTH_URL = `http://${window.location.hostname}:5000`;
 
 const Dashboard = () => {
   const [projects, setProjects] = useState([]);
@@ -87,7 +87,7 @@ const Dashboard = () => {
       }
       // Also create folder on coding server
       try {
-        await fetch('http://localhost:9000/folder', {
+        await fetch(`http://${window.location.hostname}:9000/folder`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path: name.trim(), userId })
@@ -155,7 +155,7 @@ const Dashboard = () => {
 
   const openProject = (projectName, ownerId) => {
     // Pass token in URL since IDE (port 5173) is a different origin than Dashboard (port 3000)
-    window.location.href = `http://localhost:5173/?project=${encodeURIComponent(projectName)}&ownerId=${ownerId}&collaboratorId=${userId}&token=${token}`;
+    window.location.href = `http://${window.location.hostname}:5173/?project=${encodeURIComponent(projectName)}&ownerId=${ownerId}&collaboratorId=${userId}&token=${token}`;
   };
 
   const handleLogout = () => {
