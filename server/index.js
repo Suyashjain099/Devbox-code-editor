@@ -480,7 +480,7 @@ Complete from exactly where the code ends:`;
         if (!response.ok) {
             const err = await response.text();
             console.error('Gemini API error:', err);
-            return res.status(502).json({ msg: 'AI service error' });
+            return res.status(502).json({ msg: `AI service error: ${err}` });
         }
 
         const data = await response.json();
