@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import './Auth.css';
 import { useNavigate, Link } from 'react-router-dom';
 
+const AUTH_URL = process.env.REACT_APP_AUTH_URL || `http://${window.location.hostname}:5000`;
+
 const SignUp = () => {
   const [formData, setFormData] = useState({
     email: '',
@@ -32,7 +34,7 @@ const SignUp = () => {
     setError(null);
     const { email, password, confirmPassword } = formData;
 
-    fetch('/signup', {
+    fetch(`${AUTH_URL}/signup`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
