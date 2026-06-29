@@ -7,6 +7,7 @@ const jwt = require('jsonwebtoken');
 const bodyParser = require('body-parser');
 const path = require('path');
 const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
 const rateLimit = require('express-rate-limit');
 const Project = require('./model/Project');
 const File = require('./model/File');
