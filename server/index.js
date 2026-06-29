@@ -61,8 +61,11 @@ if (process.env.SMTP_USER && process.env.SMTP_PASS) {
 
 const JWT_SECRET = process.env.JWT_SECRET || 'devbox_fallback_secret_change_me';
 
-// Force Node.js to use Google DNS, bypassing mobile hotspot DNS blocking
-dns.setServers(['8.8.8.8', '8.8.4.4']);
+// Force Node.js to use Google DNS only in local development, bypassing mobile hotspot blocking
+if (process.env.NODE_ENV !== 'production') {
+    dns.setServers(['8.8.8.8', '8.8.4.4']);
+    console.log('[DNS] Forced Google DNS servers for local development fallback');
+}
 
 const app = express();
 app.set('trust proxy', 1);
