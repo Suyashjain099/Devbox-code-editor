@@ -314,73 +314,81 @@ function App() {
 
 
 
-    // Fire AI after user stops typing for 900ms
+    // Clear ghost suggestion on typing
     editor.onDidChangeModelContent(() => {
       clearGhost();
-      clearTimeout(aiDebounceRef.current);
+    });
 
-      aiDebounceRef.current = setTimeout(async () => {
-        const model = editor.getModel();
-        const position = editor.getPosition();
-        if (!model || !position) return;
+    // Manual trigger for AI suggestions
+    const triggerAi = async () => {
+      clearGhost();
+      const model = editor.getModel();
+      const position = editor.getPosition();
+      if (!model || !position) return;
 
-        const codeUpToCursor = model.getValueInRange({
-          startLineNumber: 1, startColumn: 1,
-          endLineNumber: position.lineNumber,
-          endColumn: position.column
+      const codeUpToCursor = model.getValueInRange({
+        startLineNumber: 1, startColumn: 1,
+        endLineNumber: position.lineNumber,
+        endColumn: position.column
+      });
+
+      console.log('[AI] Triggered manually. Code length:', codeUpToCursor.trim().length, '| Token present:', !!authToken);
+
+      if (codeUpToCursor.trim().length < 8) {
+        alert('Please write at least 8 characters before triggering AI completion.');
+        return;
+      }
+
+      const token = authToken;
+      if (!token) { console.warn('[AI] No auth token'); return; }
+
+      const language = model.getLanguageId();
+      setAiStatus('thinking');
+
+      try {
+        console.log('[AI] Fetching from server...');
+        const res = await fetch(`${authUrl}/ai/complete`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ code: codeUpToCursor, language, cursorLine: position.lineNumber })
         });
 
-        console.log('[AI] Triggered. Code length:', codeUpToCursor.trim().length, '| Token present:', !!authToken);
+        console.log('[AI] Server responded:', res.status, res.ok);
+        setAiStatus('done');
+        setTimeout(() => setAiStatus('idle'), 2000);
 
-
-        if (codeUpToCursor.trim().length < 8) return;
-
-        const token = authToken;
-        if (!token) { console.warn('[AI] No auth token'); return; }
-
-        const language = model.getLanguageId();
-        setAiStatus('thinking');
-
-        try {
-          console.log('[AI] Fetching from server...');
-          const res = await fetch(`${authUrl}/ai/complete`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ code: codeUpToCursor, language, cursorLine: position.lineNumber })
-          });
-
-          console.log('[AI] Server responded:', res.status, res.ok);
-          setAiStatus('done');
-          setTimeout(() => setAiStatus('idle'), 2000);
-
-          if (!res.ok) {
-            let errorText = '';
-            try {
-              const errData = await res.json();
-              errorText = errData.msg || '';
-            } catch (e) {
-              try { errorText = await res.text(); } catch (e2) {}
-            }
-            console.warn('[AI] Request failed:', res.status, errorText);
-            return;
+        if (!res.ok) {
+          let errorText = '';
+          try {
+            const errData = await res.json();
+            errorText = errData.msg || '';
+          } catch (e) {
+            try { errorText = await res.text(); } catch (e2) {}
           }
-          const data = await res.json();
-          console.log('[AI] Data from server:', JSON.stringify(data).substring(0, 100));
-          const completion = (data.completion || '').trim();
-          console.log('[AI] Completion length:', completion.length, '| Preview:', completion.substring(0, 50));
-          if (!completion) return;
-
-          const currentPos = editor.getPosition();
-          showGhost(completion, currentPos);
-        } catch (err) {
-          setAiStatus('idle');
-          console.error('[AI Error]', err.message, err.stack);
+          console.warn('[AI] Request failed:', res.status, errorText);
+          alert('AI autocomplete failed: ' + errorText);
+          return;
         }
+        const data = await res.json();
+        console.log('[AI] Data from server:', JSON.stringify(data).substring(0, 100));
+        const completion = (data.completion || '').trim();
+        console.log('[AI] Completion length:', completion.length, '| Preview:', completion.substring(0, 50));
+        if (!completion) return;
 
-      }, 900);
+        const currentPos = editor.getPosition();
+        showGhost(completion, currentPos);
+      } catch (err) {
+        setAiStatus('idle');
+        console.error('[AI Error]', err.message, err.stack);
+      }
+    };
+
+    // Bind Ctrl + \ to trigger AI completion
+    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.Backslash, () => {
+      triggerAi();
     });
 
     // Tab: accept AI suggestion OR default indent
@@ -677,14 +685,14 @@ function App() {
           <span className="status-item">🐳 Docker</span>
           {selectedFile && <span className="status-item">{getLanguageLabel()}</span>}
           {/* AI Status indicator */}
-          <span className="status-item" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+          <span className="status-item" style={{ display: 'flex', alignItems: 'center', gap: '5px' }} title="Press Ctrl + \ to trigger AI autocomplete suggestion">
             <span style={{
               width: 7, height: 7, borderRadius: '50%', display: 'inline-block',
               background: aiStatus === 'thinking' ? '#a78bfa' : aiStatus === 'done' ? '#10b981' : '#4ade80',
               boxShadow: aiStatus === 'thinking' ? '0 0 6px #a78bfa' : aiStatus === 'done' ? '0 0 6px #10b981' : 'none',
               transition: 'all 0.3s'
             }} />
-            AI {aiStatus === 'thinking' ? 'thinking' : 'ready'}
+            AI: {aiStatus === 'thinking' ? 'thinking...' : 'ready (Ctrl+\\)'}
           </span>
         </div>
         <div className="status-right">
