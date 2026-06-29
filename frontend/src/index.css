@@ -24,6 +24,30 @@
   --border-subtle: #18181B;
 }
 
+[data-theme="light"] {
+  /* ── Core Palette ── */
+  --bg-main: #f8fafc;
+  --bg-secondary: #f1f5f9;
+  --bg-tertiary: #e2e8f0;
+  --bg-elevated: #ffffff;
+
+  --text-main: #0f172a;
+  --text-muted: #475569;
+  --text-subtle: #94a3b8;
+
+  /* ── Accent Colors ── */
+  --accent-primary: #4f46e5;
+  --accent-secondary: #6366f1;
+  --accent-green: #059669;
+  --accent-red: #dc2626;
+  --accent-yellow: #d97706;
+  --accent-glow: rgba(79, 70, 229, 0.08);
+
+  /* ── Borders ── */
+  --border-color: #cbd5e1;
+  --border-subtle: #e2e8f0;
+}
+
 * {
   box-sizing: border-box;
   padding: 0;
