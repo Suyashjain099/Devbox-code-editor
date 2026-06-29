@@ -11,6 +11,53 @@ const rateLimit = require('express-rate-limit');
 const Project = require('./model/Project');
 const File = require('./model/File');
 const Invitation = require('./model/Invitation');
+const nodemailer = require('nodemailer');
+
+const checkEmailDomainMX = (email) => {
+  return new Promise((resolve) => {
+    const domain = email.split('@')[1];
+    if (!domain) return resolve(false);
+
+    dns.resolveMx(domain, (err, addresses) => {
+      if (err || !addresses || addresses.length === 0) {
+        // Fallback to checking A record in case domain serves email on root IP
+        dns.resolve(domain, 'A', (errA, addressesA) => {
+          if (errA || !addressesA || addressesA.length === 0) {
+            resolve(false);
+          } else {
+            resolve(true);
+          }
+        });
+      } else {
+        resolve(true);
+      }
+    });
+  });
+};
+
+const mailConfig = {
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.SMTP_PORT) || 587,
+  secure: process.env.SMTP_SECURE === 'true',
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS
+  }
+};
+
+const transporter = nodemailer.createTransport(mailConfig);
+
+if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+    transporter.verify((error) => {
+        if (error) {
+            console.error('[SMTP] Connection failed:', error.message);
+        } else {
+            console.log('[SMTP] Server is ready to send messages');
+        }
+    });
+} else {
+    console.warn('[SMTP] Configuration missing. Emails will be logged to console instead.');
+}
 
 const JWT_SECRET = process.env.JWT_SECRET || 'devbox_fallback_secret_change_me';
 
@@ -215,11 +262,24 @@ app.delete('/projects/:name', authMiddleware, async (req, res) => {
 // ── Invitation Routes ────────────────────────
 
 // Send an invite
+// Send an invite
 app.post('/invites/send', authMiddleware, async (req, res) => {
     const { projectId, email } = req.body;
     try {
+        // 1. Validate email syntax
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email)) {
+            return res.status(400).json({ msg: 'Invalid email syntax' });
+        }
+
+        // 2. Validate email domain exists via DNS
+        const domainExists = await checkEmailDomainMX(email);
+        if (!domainExists) {
+            return res.status(400).json({ msg: 'Email domain does not exist or has no mail servers' });
+        }
+
         const receiver = await User.findOne({ email });
-        if (!receiver) return res.status(404).json({ msg: 'User not found' });
+        if (!receiver) return res.status(404).json({ msg: 'User not found. They must sign up first.' });
         
         if (receiver._id.toString() === req.userId) {
             return res.status(400).json({ msg: 'You cannot invite yourself' });
@@ -241,7 +301,43 @@ app.post('/invites/send', authMiddleware, async (req, res) => {
             receiverId: receiver._id
         });
         await invite.save();
-        res.status(201).json({ msg: 'Invitation sent' });
+
+        // 3. Send email invitation via nodemailer (or log to console if not configured)
+        const sender = await User.findById(req.userId);
+        const emailSubject = `Invitation to collaborate on project: ${project.name}`;
+        const emailHtml = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 8px;">
+                <h2 style="color: #4f46e5;">DevBox IDE Collaboration</h2>
+                <p>Hello,</p>
+                <p><strong>${sender ? sender.email : 'A developer'}</strong> has invited you to collaborate on their project: <strong>${project.name}</strong>.</p>
+                <p>To accept this invitation:</p>
+                <ol>
+                    <li>Log in to your account at <a href="https://devbox-code-editor.vercel.app/login">devbox-code-editor.vercel.app</a></li>
+                    <li>Go to your <strong>Dashboard</strong></li>
+                    <li>Accept the invitation under your <strong>Project Invites</strong> section.</li>
+                </ol>
+                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+                <p style="font-size: 12px; color: #64748b;">This email was sent automatically by DevBox IDE. Please do not reply to this email.</p>
+            </div>
+        `;
+
+        if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+            try {
+                await transporter.sendMail({
+                    from: `"DevBox IDE" <${process.env.SMTP_USER}>`,
+                    to: email,
+                    subject: emailSubject,
+                    html: emailHtml
+                });
+                console.log(`[SMTP] Invitation email sent successfully to: ${email}`);
+            } catch (smtpErr) {
+                console.error(`[SMTP] Failed to send email to ${email}:`, smtpErr.message);
+            }
+        } else {
+            console.log(`[SMTP MOCK] Sending email to: ${email}\nSubject: ${emailSubject}\nHtml Content:\n${emailHtml}`);
+        }
+
+        res.status(201).json({ msg: 'Invitation sent and email notification triggered' });
     } catch (err) {
         console.error(err);
         res.status(500).json({ msg: 'Server error' });
