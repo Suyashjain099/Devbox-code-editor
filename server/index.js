@@ -306,7 +306,7 @@ app.post('/invites/send', authMiddleware, async (req, res) => {
         });
         await invite.save();
 
-        // 3. Send email invitation via nodemailer (or log to console if not configured)
+        // 3. Send email invitation (Resend API -> Nodemailer -> Mock fallback)
         const sender = await User.findById(req.userId);
         const emailSubject = `Invitation to collaborate on project: ${project.name}`;
         const emailHtml = `
@@ -325,7 +325,31 @@ app.post('/invites/send', authMiddleware, async (req, res) => {
             </div>
         `;
 
-        if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+        if (process.env.RESEND_API_KEY) {
+            try {
+                const resendRes = await fetch('https://api.resend.com/emails', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        from: 'DevBox IDE <onboarding@resend.dev>', // Resend free sandbox domain
+                        to: email,
+                        subject: emailSubject,
+                        html: emailHtml
+                    })
+                });
+                if (resendRes.ok) {
+                    console.log(`[Resend] Invitation email sent successfully to: ${email}`);
+                } else {
+                    const errRes = await resendRes.text();
+                    console.error('[Resend] API error:', errRes);
+                }
+            } catch (resendErr) {
+                console.error('[Resend] Failed to send email:', resendErr.message);
+            }
+        } else if (process.env.SMTP_USER && process.env.SMTP_PASS) {
             try {
                 await transporter.sendMail({
                     from: `"DevBox IDE" <${process.env.SMTP_USER}>`,
