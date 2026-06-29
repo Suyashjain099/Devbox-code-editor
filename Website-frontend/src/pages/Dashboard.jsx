@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import './Dashboard.css';
+const CODING_URL = process.env.REACT_APP_CODING_URL || `http://${window.location.hostname}:9000`;
+const EDITOR_URL = process.env.REACT_APP_EDITOR_URL || `http://${window.location.hostname}:5173`;
 
 const Dashboard = () => {
   const [projects, setProjects] = useState([]);
@@ -16,7 +17,7 @@ const Dashboard = () => {
     try {
       setLoading(true);
       setError(null);
-      const res = await fetch(`http://${window.location.hostname}:9000/files`);
+      const res = await fetch(`${CODING_URL}/files`);
       if (!res.ok) throw new Error('Could not reach coding server');
       const data = await res.json();
       if (data && data.tree) {
@@ -40,7 +41,7 @@ const Dashboard = () => {
     const name = prompt('Enter new project name:');
     if (!name || name.trim() === '') return;
     try {
-      const res = await fetch(`http://${window.location.hostname}:9000/folder`, {
+      const res = await fetch(`${CODING_URL}/folder`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path: name.trim() })
@@ -54,7 +55,7 @@ const Dashboard = () => {
   };
 
   const openProject = (projectName) => {
-    window.location.href = `http://${window.location.hostname}:5173/?project=${encodeURIComponent(projectName)}`;
+    window.location.href = `${EDITOR_URL}/?project=${encodeURIComponent(projectName)}`;
   };
 
   const handleLogout = () => {

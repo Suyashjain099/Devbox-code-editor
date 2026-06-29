@@ -12,7 +12,9 @@ const getUserIdFromToken = (token) => {
   }
 };
 
-const AUTH_URL = `http://${window.location.hostname}:5000`;
+const AUTH_URL = process.env.REACT_APP_AUTH_URL || `http://${window.location.hostname}:5000`;
+const CODING_URL = process.env.REACT_APP_CODING_URL || `http://${window.location.hostname}:9000`;
+const EDITOR_URL = process.env.REACT_APP_EDITOR_URL || `http://${window.location.hostname}:5173`;
 
 const Dashboard = () => {
   const [projects, setProjects] = useState([]);
@@ -88,7 +90,7 @@ const Dashboard = () => {
       }
       // Also create folder on coding server
       try {
-        await fetch(`http://${window.location.hostname}:9000/folder`, {
+        await fetch(`${CODING_URL}/folder`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path: name.trim(), userId })
@@ -156,7 +158,7 @@ const Dashboard = () => {
 
   const openProject = (projectName, ownerId) => {
     // Pass token in URL since IDE (port 5173) is a different origin than Dashboard (port 3000)
-    window.location.href = `http://${window.location.hostname}:5173/?project=${encodeURIComponent(projectName)}&ownerId=${ownerId}&collaboratorId=${userId}&token=${token}`;
+    window.location.href = `${EDITOR_URL}/?project=${encodeURIComponent(projectName)}&ownerId=${ownerId}&collaboratorId=${userId}&token=${token}`;
   };
 
   const handleLogout = () => {
