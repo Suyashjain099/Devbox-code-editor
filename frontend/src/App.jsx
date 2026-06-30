@@ -361,6 +361,11 @@ function App() {
         setTimeout(() => setAiStatus('idle'), 2000);
 
         if (!res.ok) {
+          if (res.status === 403) {
+            setAiStatus('idle');
+            alert('🔒 DevBox AI Autocomplete requires a Premium subscription. Please upgrade in your Dashboard.');
+            return;
+          }
           let errorText = '';
           try {
             const errData = await res.json();

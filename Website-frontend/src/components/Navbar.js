@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './Navbar.css';
 
@@ -7,6 +7,29 @@ const Navbar = () => {
   const isAuthPage = location.pathname === '/login' || location.pathname === '/signup';
   const isDashboard = location.pathname === '/dashboard';
   const isLoggedIn = !!localStorage.getItem('token');
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      const fetchProfile = async () => {
+        try {
+          const authUrl = process.env.REACT_APP_AUTH_URL || `http://${window.location.hostname}:5000`;
+          const res = await fetch(`${authUrl}/users/me`, {
+            headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setUser(data);
+          }
+        } catch (err) {
+          console.error('Error fetching profile in navbar:', err);
+        }
+      };
+      fetchProfile();
+    } else {
+      setUser(null);
+    }
+  }, [isLoggedIn, location.pathname]);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -29,6 +52,9 @@ const Navbar = () => {
             <Link to="/features" className="nav-link">Features</Link>
             <Link to="/learn" className="nav-link">Learn</Link>
             <Link to="/community" className="nav-link">Community</Link>
+            <Link to={isLoggedIn ? "/dashboard?upgrade=true" : "/login"} className={`nav-link subscription-link ${user?.isPremium ? 'premium-badge' : 'free-badge'}`}>
+              {user?.isPremium ? '👑 Premium' : '⭐ Subscription'}
+            </Link>
           </div>
           
           <div className='nav-actions'>

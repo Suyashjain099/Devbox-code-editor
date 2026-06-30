@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import './Dashboard.css';
 
 // Helper: decode JWT payload without a library (base64 decode)
@@ -22,16 +22,51 @@ const Dashboard = () => {
   const [invites, setInvites] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [user, setUser] = useState(null);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const token = localStorage.getItem('token');
   const userId = getUserIdFromToken(token);
 
   useEffect(() => {
+    const searchParams = new URLSearchParams(location.search);
+    if (searchParams.get('upgrade') === 'true' && user && !user.isPremium) {
+      setShowUpgradeModal(true);
+    }
+  }, [location.search, user]);
+
+  useEffect(() => {
+    fetchProfile();
     fetchProjects();
     fetchInvites();
+    
+    // Dynamically load Razorpay SDK
+    const script = document.createElement('script');
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.async = true;
+    document.body.appendChild(script);
+    
+    return () => {
+      document.body.removeChild(script);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const fetchProfile = async () => {
+    try {
+      const res = await fetch(`${AUTH_URL}/users/me`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUser(data);
+      }
+    } catch (err) {
+      console.error('Error fetching profile:', err);
+    }
+  };
 
   const fetchInvites = async () => {
     try {
@@ -119,8 +154,72 @@ const Dashboard = () => {
     }
   };
 
+  const handleUpgrade = async () => {
+    try {
+      const orderRes = await fetch(`${AUTH_URL}/payments/order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      if (!orderRes.ok) {
+        alert('Failed to initialize payment. Try again.');
+        return;
+      }
+      const orderData = await orderRes.json();
+      
+      const options = {
+        key: orderData.keyId,
+        amount: orderData.amount,
+        currency: orderData.currency,
+        name: 'DevBox IDE',
+        description: 'Premium Subscription (30 Days)',
+        order_id: orderData.orderId,
+        handler: async function (response) {
+          const verifyRes = await fetch(`${AUTH_URL}/payments/verify`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature
+            })
+          });
+          const verifyData = await verifyRes.json();
+          if (verifyRes.ok) {
+            alert('Congratulations! Your premium access is activated.');
+            setShowUpgradeModal(false);
+            fetchProfile();
+          } else {
+            alert(verifyData.msg || 'Payment verification failed.');
+          }
+        },
+        prefill: {
+          email: user?.email || '',
+        },
+        theme: {
+          color: '#6366f1'
+        }
+      };
+      
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+    } catch (err) {
+      console.error('Upgrade error:', err);
+      alert('Error initiating upgrade process.');
+    }
+  };
+
   const handleSendInvite = async (e, projectId) => {
     e.stopPropagation();
+    if (!user?.isPremium) {
+      setShowUpgradeModal(true);
+      return;
+    }
     const email = prompt('Enter the email of the person you want to invite:');
     if (!email || email.trim() === '') return;
     
@@ -195,11 +294,51 @@ const Dashboard = () => {
             <h1 style={{ fontSize: '2.2rem', fontWeight: 700, letterSpacing: '-0.5px', margin: 0, marginBottom: '6px' }}>
               Your Workspaces
             </h1>
-            <p style={{ color: '#a1a1aa', margin: 0, fontSize: '0.95rem' }}>
-              All your projects are saved to your account. Pick up where you left off.
-            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px', flexWrap: 'wrap' }}>
+              <p style={{ color: '#a1a1aa', margin: 0, fontSize: '0.95rem' }}>
+                All your projects are saved to your account.
+              </p>
+              {user && (
+                <div style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '3px 10px',
+                  borderRadius: '12px',
+                  fontSize: '0.78rem',
+                  fontWeight: 600,
+                  background: user.isPremium ? 'linear-gradient(135deg, #fbbf24 0%, #d97706 100%)' : 'rgba(255,255,255,0.08)',
+                  color: user.isPremium ? '#1e1b4b' : '#a1a1aa',
+                  border: user.isPremium ? 'none' : '1px solid rgba(255,255,255,0.15)',
+                  boxShadow: user.isPremium ? '0 0 12px rgba(217, 119, 6, 0.4)' : 'none'
+                }}>
+                  {user.isPremium ? '👑 Premium Member' : '⭐ Free Tier'}
+                </div>
+              )}
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            {user && !user.isPremium && (
+              <button
+                onClick={() => setShowUpgradeModal(true)}
+                style={{
+                  padding: '10px 20px',
+                  background: 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontWeight: 600,
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 0 15px rgba(99, 102, 241, 0.3)',
+                  transition: 'all 0.2s ease',
+                }}
+                onMouseEnter={e => e.currentTarget.style.boxShadow = '0 0 20px rgba(99, 102, 241, 0.6)'}
+                onMouseLeave={e => e.currentTarget.style.boxShadow = '0 0 15px rgba(99, 102, 241, 0.3)'}
+              >
+                🚀 Upgrade to Premium
+              </button>
+            )}
             <button
               onClick={handleCreateProject}
               style={{
@@ -419,6 +558,74 @@ const Dashboard = () => {
           </div>
         )}
       </div>
+
+      {/* Premium Upgrade Modal */}
+      {showUpgradeModal && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+          backgroundColor: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center',
+          justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(8px)'
+        }}>
+          <div style={{
+            background: 'linear-gradient(135deg, #18181b 0%, #09090b 100%)',
+            border: '1px solid #27272a', borderRadius: '16px', padding: '36px',
+            maxWidth: '450px', width: '90%', boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+            textAlign: 'center', position: 'relative'
+          }}>
+            <button
+              onClick={() => setShowUpgradeModal(false)}
+              style={{
+                position: 'absolute', top: '16px', right: '16px', background: 'transparent',
+                border: 'none', color: '#71717a', fontSize: '1.2rem', cursor: 'pointer'
+              }}
+            >
+              ✕
+            </button>
+            <div style={{ fontSize: '3rem', marginBottom: '16px' }}>👑</div>
+            <h2 style={{ fontSize: '1.8rem', fontWeight: 700, color: '#ffffff', margin: '0 0 8px 0', letterSpacing: '-0.5px' }}>
+              Upgrade to Premium
+            </h2>
+            <p style={{ color: '#a1a1aa', fontSize: '0.95rem', margin: '0 0 24px 0' }}>
+              Unlock full developer powers with DevBox Premium.
+            </p>
+            
+            <div style={{ textAlign: 'left', background: 'rgba(255,255,255,0.03)', padding: '16px 20px', borderRadius: '12px', border: '1px solid #27272a', marginBottom: '24px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', fontSize: '0.9rem', color: '#e4e4e7' }}>
+                ✅ <strong style={{ color: '#fbbf24' }}>AI Suggestion Autocomplete</strong> (Powered by Gemini 2.5)
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px', fontSize: '0.9rem', color: '#e4e4e7' }}>
+                ✅ <strong style={{ color: '#60a5fa' }}>Real-time Code Collaboration</strong>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.9rem', color: '#e4e4e7' }}>
+                ✅ <strong style={{ color: '#a78bfa' }}>Unlimited Projects & Files</strong>
+              </div>
+            </div>
+
+            <div style={{ margin: '24px 0', fontSize: '1.8rem', fontWeight: 800, color: '#ffffff' }}>
+              ₹199 <span style={{ fontSize: '1rem', fontWeight: 400, color: '#71717a' }}>/ month</span>
+            </div>
+
+            <button
+              onClick={handleUpgrade}
+              style={{
+                width: '100%', padding: '12px',
+                background: 'linear-gradient(135deg, #fbbf24 0%, #d97706 100%)',
+                color: '#1e1b4b', border: 'none', borderRadius: '8px',
+                fontWeight: 700, fontSize: '1rem', cursor: 'pointer',
+                boxShadow: '0 4px 15px rgba(217, 119, 6, 0.3)',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={e => e.currentTarget.style.boxShadow = '0 6px 20px rgba(217, 119, 6, 0.5)'}
+              onMouseLeave={e => e.currentTarget.style.boxShadow = '0 4px 15px rgba(217, 119, 6, 0.3)'}
+            >
+              Subscribe Now
+            </button>
+            <p style={{ fontSize: '0.75rem', color: '#52525b', marginTop: '16px', marginBottom: 0 }}>
+              Secure payments powered by Razorpay. Cancel anytime.
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

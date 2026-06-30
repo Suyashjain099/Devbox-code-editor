@@ -13,6 +13,13 @@ const Project = require('./model/Project');
 const File = require('./model/File');
 const Invitation = require('./model/Invitation');
 const nodemailer = require('nodemailer');
+const Razorpay = require('razorpay');
+const crypto = require('crypto');
+
+const razorpay = new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder_key',
+    key_secret: process.env.RAZORPAY_KEY_SECRET || 'placeholder_secret'
+});
 
 const checkEmailDomainMX = (email) => {
   return new Promise((resolve) => {
@@ -208,6 +215,99 @@ const authMiddleware = (req, res, next) => {
     }
 };
 
+// ── Premium Checking Middleware ──────────────
+const checkPremium = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.userId);
+        if (!user) return res.status(404).json({ msg: 'User not found' });
+
+        const isPremium = user.isPremium && (user.premiumExpiresAt ? new Date() < new Date(user.premiumExpiresAt) : true);
+
+        // If subscription has expired, update database
+        if (user.isPremium && !isPremium) {
+            user.isPremium = false;
+            await user.save();
+        }
+
+        if (!isPremium) {
+            return res.status(403).json({ msg: 'Premium subscription required for this feature.' });
+        }
+
+        next();
+    } catch (err) {
+        console.error('Premium check error:', err);
+        res.status(500).json({ msg: 'Server error' });
+    }
+};
+
+// ── User Profile Endpoint ────────────────────
+app.get('/users/me', authMiddleware, async (req, res) => {
+    try {
+        const user = await User.findById(req.userId).select('-password');
+        if (!user) return res.status(404).json({ msg: 'User not found' });
+        
+        const isPremium = user.isPremium && (user.premiumExpiresAt ? new Date() < new Date(user.premiumExpiresAt) : true);
+        
+        // Auto-update if expired
+        if (user.isPremium && !isPremium) {
+            user.isPremium = false;
+            await user.save();
+        }
+        
+        res.json({ email: user.email, isPremium, premiumExpiresAt: user.premiumExpiresAt });
+    } catch (err) {
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// ── Payment Routes (Razorpay) ────────────────
+app.post('/payments/order', authMiddleware, async (req, res) => {
+    try {
+        const options = {
+            amount: 19900, // ₹199.00 in paise
+            currency: 'INR',
+            receipt: `rcpt_${req.userId.toString().slice(-8)}_${Date.now().toString().slice(-8)}`
+        };
+        const order = await razorpay.orders.create(options);
+        res.json({
+            orderId: order.id,
+            amount: order.amount,
+            currency: order.currency,
+            keyId: process.env.RAZORPAY_KEY_ID || 'rzp_test_placeholder_key'
+        });
+    } catch (err) {
+        console.error('Razorpay order creation failed:', err);
+        res.status(500).json({ msg: 'Payment setup failed' });
+    }
+});
+
+app.post('/payments/verify', authMiddleware, async (req, res) => {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+    try {
+        const key_secret = process.env.RAZORPAY_KEY_SECRET || 'placeholder_secret';
+        const generated_signature = crypto
+            .createHmac('sha256', key_secret)
+            .update(razorpay_order_id + "|" + razorpay_payment_id)
+            .digest('hex');
+
+        if (generated_signature === razorpay_signature) {
+            const user = await User.findById(req.userId);
+            if (user) {
+                user.isPremium = true;
+                user.premiumExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 Days
+                await user.save();
+                return res.json({ msg: 'Subscription activated!', isPremium: true, premiumExpiresAt: user.premiumExpiresAt });
+            }
+            res.status(404).json({ msg: 'User not found' });
+        } else {
+            res.status(400).json({ msg: 'Invalid payment signature. Verification failed.' });
+        }
+    } catch (err) {
+        console.error('Razorpay verification error:', err);
+        res.status(500).json({ msg: 'Verification failed' });
+    }
+});
+
 // ── Project Routes ──────────────────────────
 
 // GET /projects — list all projects for the logged-in user
@@ -266,8 +366,7 @@ app.delete('/projects/:name', authMiddleware, async (req, res) => {
 // ── Invitation Routes ────────────────────────
 
 // Send an invite
-// Send an invite
-app.post('/invites/send', authMiddleware, async (req, res) => {
+app.post('/invites/send', authMiddleware, checkPremium, async (req, res) => {
     const { projectId, email } = req.body;
     try {
         // 1. Validate email syntax
@@ -592,7 +691,7 @@ const aiLimiter = rateLimit({
     message: { msg: 'AI rate limit reached. Please wait a moment.' }
 });
 
-app.post('/ai/complete', aiLimiter, authMiddleware, async (req, res) => {
+app.post('/ai/complete', aiLimiter, authMiddleware, checkPremium, async (req, res) => {
     const { code, language, cursorLine } = req.body;
     if (!code) return res.status(400).json({ msg: 'No code provided' });
 

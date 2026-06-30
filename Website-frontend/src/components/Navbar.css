@@ -115,3 +115,45 @@
         display: none;
     }
 }
+
+/* Subscription Link Custom Styles */
+.subscription-link {
+    text-decoration: none;
+    padding: 0.35rem 0.9rem;
+    border-radius: 9999px;
+    font-size: 0.88rem !important;
+    font-weight: 600 !important;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Free tier layout style */
+.subscription-link.free-badge {
+    color: #a1a1aa !important;
+    border: 1px dashed rgba(161, 161, 170, 0.4);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.subscription-link.free-badge:hover {
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.7);
+    background: rgba(255, 255, 255, 0.07);
+    transform: translateY(-1px);
+}
+
+/* Premium active crown style */
+.subscription-link.premium-badge {
+    color: #fbbf24 !important; /* Gold */
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    background: rgba(251, 191, 36, 0.05);
+    box-shadow: 0 0 10px rgba(251, 191, 36, 0.1);
+}
+
+.subscription-link.premium-badge:hover {
+    border-color: #fbbf24;
+    box-shadow: 0 0 15px rgba(251, 191, 36, 0.4);
+    background: rgba(251, 191, 36, 0.12);
+    transform: translateY(-1px);
+}
