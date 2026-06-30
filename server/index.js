@@ -334,7 +334,7 @@ app.post('/invites/send', authMiddleware, async (req, res) => {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        from: 'DevBox IDE <onboarding@resend.dev>', // Resend free sandbox domain
+                        from: process.env.RESEND_FROM_EMAIL || 'DevBox IDE <onboarding@resend.dev>',
                         to: email,
                         subject: emailSubject,
                         html: emailHtml
