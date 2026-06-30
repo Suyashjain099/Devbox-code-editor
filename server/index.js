@@ -325,7 +325,35 @@ app.post('/invites/send', authMiddleware, async (req, res) => {
             </div>
         `;
 
-        if (process.env.RESEND_API_KEY) {
+        if (process.env.BREVO_API_KEY) {
+            try {
+                const brevoRes = await fetch('https://api.brevo.com/v3/smtp/email', {
+                    method: 'POST',
+                    headers: {
+                        'accept': 'application/json',
+                        'api-key': process.env.BREVO_API_KEY,
+                        'content-type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        sender: {
+                            name: 'DevBox IDE',
+                            email: process.env.BREVO_SENDER_EMAIL || 'suyashjaindamoh@gmail.com'
+                        },
+                        to: [{ email: email }],
+                        subject: emailSubject,
+                        htmlContent: emailHtml
+                    })
+                });
+                if (brevoRes.ok) {
+                    console.log(`[Brevo] Invitation email sent successfully to: ${email}`);
+                } else {
+                    const errRes = await brevoRes.text();
+                    console.error('[Brevo] API error:', errRes);
+                }
+            } catch (brevoErr) {
+                console.error('[Brevo] Failed to send email:', brevoErr.message);
+            }
+        } else if (process.env.RESEND_API_KEY) {
             try {
                 const resendRes = await fetch('https://api.resend.com/emails', {
                     method: 'POST',
@@ -352,7 +380,7 @@ app.post('/invites/send', authMiddleware, async (req, res) => {
         } else if (process.env.SMTP_USER && process.env.SMTP_PASS) {
             try {
                 await transporter.sendMail({
-                    from: `"DevBox IDE" <${process.env.SMTP_USER}>`,
+                    from: process.env.SMTP_FROM_EMAIL || `"DevBox IDE" <${process.env.SMTP_USER}>`,
                     to: email,
                     subject: emailSubject,
                     html: emailHtml
